@@ -1,0 +1,31 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "outDir": "./frontend/dist",
+    "rootDir": "./frontend/src",
+    "baseUrl": "./frontend",
+    "paths": {
+      "@/*": ["src/*"],
+      "@components/*": ["src/components/*"],
+      "@pages/*": ["src/pages/*"],
+      "@hooks/*": ["src/hooks/*"],
+      "@utils/*": ["src/utils/*"],
+      "@services/*": ["src/services/*"],
+      "@types/*": ["src/types/*"]
+    },
+    "types": ["vite/client", "node"]
+  },
+  "include": ["frontend/src/**/*", "frontend/vite-env.d.ts"],
+  "exclude": ["frontend/node_modules", "frontend/dist"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}
