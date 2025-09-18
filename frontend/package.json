@@ -33,6 +33,7 @@
     "zustand": "^4.4.7"
   },
   "devDependencies": {
+    "@babel/plugin-transform-react-jsx": "^7.27.1",
     "@tanstack/react-query-devtools": "^5.89.0",
     "@types/node": "^20.10.5",
     "@types/react": "^18.2.48",
