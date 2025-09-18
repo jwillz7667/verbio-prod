@@ -112,7 +112,7 @@ export const authenticate = async (
 
 export const optionalAuthenticate = async (
   req: AuthRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
 ): Promise<void> => {
   try {
@@ -189,7 +189,7 @@ export const refreshToken = async (
     const newToken = generateToken({
       userId: req.user.userId,
       email: req.user.email,
-      businessId: req.user.businessId,
+      businessId: req.user.businessId || '',
     });
 
     res.cookie('token', newToken, {

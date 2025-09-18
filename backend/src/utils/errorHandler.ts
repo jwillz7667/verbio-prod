@@ -18,7 +18,7 @@ export class CustomError extends Error {
     super(message);
     this.name = this.constructor.name;
     this.statusCode = statusCode;
-    this.code = code;
+    this.code = code || undefined;
     this.details = details;
     this.isOperational = isOperational;
 
@@ -172,12 +172,12 @@ export const errorHandler = (
     },
   };
 
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env['NODE_ENV'] === 'development') {
     response.error.details = normalizedError.details;
     response.error.stack = normalizedError.stack;
   }
 
-  if (statusCode === 500 && process.env.NODE_ENV === 'production') {
+  if (statusCode === 500 && process.env['NODE_ENV'] === 'production') {
     response.error.message = 'Internal server error';
     delete response.error.details;
   }

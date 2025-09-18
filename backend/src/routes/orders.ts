@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { supabaseAdmin } from '../config/supabase';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { asyncHandler } from '../utils/errorHandler';
@@ -45,7 +45,7 @@ router.get('/', authenticate, asyncHandler(async (req: AuthRequest, res: Respons
     query = query.eq('payment_status', payment_status);
   }
 
-  const { data: orders, error, count } = await query;
+  const { data: orders, error } = await query;
 
   if (error) {
     logger.error('Failed to fetch orders', { error, userId: req.user.userId });

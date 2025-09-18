@@ -44,7 +44,7 @@ const sanitizeObject = (obj: any): any => {
   return sanitized;
 };
 
-export const sanitizationMiddleware = (req: Request, res: Response, next: NextFunction) => {
+export const sanitizationMiddleware = (req: Request, _res: Response, next: NextFunction) => {
   try {
     // Sanitize body
     if (req.body && typeof req.body === 'object') {

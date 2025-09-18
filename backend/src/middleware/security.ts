@@ -5,7 +5,7 @@ import { logger } from '../utils/logger';
 // HTTPS redirect middleware
 export const httpsRedirect = (req: Request, res: Response, next: NextFunction) => {
   // Skip in development
-  if (process.env.NODE_ENV === 'development') {
+  if (process.env['NODE_ENV'] === 'development') {
     return next();
   }
 
@@ -73,7 +73,7 @@ setInterval(() => {
 }, 60 * 60 * 1000);
 
 // Security headers middleware
-export const securityHeaders = (req: Request, res: Response, next: NextFunction) => {
+export const securityHeaders = (_req: Request, res: Response, next: NextFunction) => {
   // Prevent clickjacking
   res.setHeader('X-Frame-Options', 'DENY');
 
@@ -90,7 +90,7 @@ export const securityHeaders = (req: Request, res: Response, next: NextFunction)
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
   // Content Security Policy
-  if (process.env.NODE_ENV === 'production') {
+  if (process.env['NODE_ENV'] === 'production') {
     res.setHeader('Content-Security-Policy',
       "default-src 'self'; " +
       "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
@@ -106,11 +106,12 @@ export const securityHeaders = (req: Request, res: Response, next: NextFunction)
 
 // Request signature verification for webhooks
 export const verifyWebhookSignature = (secret: string) => {
-  return (req: Request, res: Response, next: NextFunction) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
     const signature = req.header('X-Webhook-Signature');
     if (!signature) {
       logger.warn('Missing webhook signature');
-      return res.status(401).json({ error: 'Missing signature' });
+      res.status(401).json({ error: 'Missing signature' });
+      return;
     }
 
     const expectedSignature = crypto
@@ -120,7 +121,8 @@ export const verifyWebhookSignature = (secret: string) => {
 
     if (signature !== expectedSignature) {
       logger.warn('Invalid webhook signature', { received: signature });
-      return res.status(401).json({ error: 'Invalid signature' });
+      res.status(401).json({ error: 'Invalid signature' });
+      return;
     }
 
     next();
@@ -128,18 +130,20 @@ export const verifyWebhookSignature = (secret: string) => {
 };
 
 // API key authentication middleware
-export const apiKeyAuth = (req: Request, res: Response, next: NextFunction) => {
-  const apiKey = req.header('X-API-Key') || req.query.api_key;
+export const apiKeyAuth = (req: Request, res: Response, next: NextFunction): void => {
+  const apiKey = req.header('X-API-Key') || req.query['api_key'];
 
   if (!apiKey) {
-    return res.status(401).json({ error: 'API key required' });
+    res.status(401).json({ error: 'API key required' });
+    return;
   }
 
   // Validate API key (this should check against database in production)
-  const validApiKeys = (process.env.VALID_API_KEYS || '').split(',');
+  const validApiKeys = (process.env['VALID_API_KEYS'] || '').split(',');
   if (!validApiKeys.includes(apiKey as string)) {
     logger.warn('Invalid API key attempt', { apiKey, ip: req.ip });
-    return res.status(401).json({ error: 'Invalid API key' });
+    res.status(401).json({ error: 'Invalid API key' });
+    return;
   }
 
   next();
@@ -159,7 +163,7 @@ export const requestLogging = (req: Request, res: Response, next: NextFunction) 
   });
 
   // Add Sentry breadcrumb
-  if (process.env.NODE_ENV === 'production' && global.Sentry) {
+  if (process.env['NODE_ENV'] === 'production' && (global as any).Sentry) {
     (global as any).Sentry.addBreadcrumb({
       category: 'request',
       message: `${req.method} ${req.path}`,
@@ -183,7 +187,7 @@ export const requestLogging = (req: Request, res: Response, next: NextFunction) 
     });
 
     // Add Sentry breadcrumb for response
-    if (process.env.NODE_ENV === 'production' && global.Sentry) {
+    if (process.env['NODE_ENV'] === 'production' && (global as any).Sentry) {
       (global as any).Sentry.addBreadcrumb({
         category: 'response',
         message: `${res.statusCode} ${req.method} ${req.path}`,

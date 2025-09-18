@@ -33,7 +33,7 @@ export class StripeService {
 
       const idempotencyKey = uuidv4();
 
-      const source = process.env.NODE_ENV === 'production'
+      const source = process.env['NODE_ENV'] === 'production'
         ? 'tok_visa'
         : 'tok_visa';
 
@@ -44,7 +44,7 @@ export class StripeService {
         description: metadata.description || `Order ${metadata.orderId}`,
         metadata: {
           ...metadata,
-          environment: process.env.NODE_ENV || 'development',
+          environment: process.env['NODE_ENV'] || 'development',
           timestamp: new Date().toISOString(),
         },
       }, {
@@ -76,7 +76,7 @@ export class StripeService {
 
   async handleWebhook(rawBody: Buffer, signature: string): Promise<void> {
     try {
-      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+      const webhookSecret = process.env['STRIPE_WEBHOOK_SECRET'];
 
       if (!webhookSecret) {
         throw new AppError('Stripe webhook secret not configured', 500);
@@ -190,8 +190,8 @@ export class StripeService {
           });
         }
       } else {
-        const orderId = charge.metadata?.orderId;
-        const businessId = charge.metadata?.businessId;
+        const orderId = charge.metadata?.['orderId'];
+        const businessId = charge.metadata?.['businessId'];
 
         if (orderId && businessId) {
           const { data: newPayment, error: insertError } = await supabaseAdmin
@@ -380,7 +380,7 @@ export class StripeService {
         },
         metadata: {
           ...metadata,
-          environment: process.env.NODE_ENV || 'development',
+          environment: process.env['NODE_ENV'] || 'development',
         },
       });
 

@@ -53,10 +53,10 @@ export class RealtimeSession extends EventEmitter {
   private twilioStreamSid: string | null = null;
   private ffmpegPath: string;
   private conversationHistory: any[] = [];
-  private retryCount: number = 0;
-  private maxRetries: number = 3;
-  private retryDelay: number = 1000;
-  private isConnected: boolean = false;
+  // private retryCount: number = 0;
+  // private maxRetries: number = 3;
+  // private retryDelay: number = 1000;
+  // private isConnected: boolean = false;
 
   constructor(apiKey: string, config: RealtimeConfig) {
     super();
@@ -458,7 +458,7 @@ export class RealtimeSession extends EventEmitter {
         orderId,
         phoneNumber: this.config.customerPhone,
         description: `Payment for order ${orderId}`,
-        agentId: this.sessionId,
+        agentId: this.sessionId || '',
       });
 
       const { data: payment, error: paymentError } = await supabaseAdmin

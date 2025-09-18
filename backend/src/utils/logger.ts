@@ -4,7 +4,6 @@ import fs from 'fs';
 import { config } from '../config/env';
 
 const LOG_LEVEL = config.get('LOG_LEVEL');
-const LOG_FORMAT = config.get('LOG_FORMAT');
 const NODE_ENV = config.get('NODE_ENV');
 
 const logsDir = path.join(process.cwd(), 'logs');

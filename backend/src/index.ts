@@ -81,7 +81,7 @@ app.use(
   })
 );
 app.use(helmet({
-  contentSecurityPolicy: NODE_ENV === 'production' ? undefined : false,
+  contentSecurityPolicy: NODE_ENV === 'production' || false,
   crossOriginEmbedderPolicy: false,
 }));
 app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));

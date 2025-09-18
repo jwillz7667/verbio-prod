@@ -7,8 +7,7 @@ import { logger } from '../utils/logger';
 import { CustomError } from '../utils/errorHandler';
 import type {
   TwilioWebhookRequest,
-  TwilioStatusCallbackRequest,
-  PhoneMappingConfig
+  TwilioStatusCallbackRequest
 } from '../types/twilio';
 
 const accountSid = config.get('TWILIO_ACCOUNT_SID');
@@ -63,9 +62,9 @@ export const handleWebhook = async (req: Request, res: Response): Promise<void> 
     });
 
     const twilioSignature = req.headers['x-twilio-signature'] as string;
-    const url = `${process.env.BACKEND_URL || 'https://api.verbio.app'}/api/twilio/webhook`;
+    const url = `${process.env['BACKEND_URL'] || 'https://api.verbio.app'}/api/twilio/webhook`;
 
-    if (process.env.NODE_ENV === 'production' && twilioClient) {
+    if (process.env['NODE_ENV'] === 'production' && twilioClient) {
       const isValid = twilio.validateRequest(
         authToken!,
         twilioSignature,
@@ -153,7 +152,7 @@ export const handleWebhook = async (req: Request, res: Response): Promise<void> 
 export const handleStatusCallback = async (req: Request, res: Response): Promise<void> => {
   try {
     const statusData = req.body as TwilioStatusCallbackRequest;
-    const { CallSid, CallStatus, Duration, From, To } = statusData;
+    const { CallSid, CallStatus, Duration } = statusData;
 
     logger.info('Twilio status callback received', {
       callSid: CallSid,
@@ -162,9 +161,9 @@ export const handleStatusCallback = async (req: Request, res: Response): Promise
     });
 
     const twilioSignature = req.headers['x-twilio-signature'] as string;
-    const url = `${process.env.BACKEND_URL || 'https://api.verbio.app'}/api/twilio/status`;
+    const url = `${process.env['BACKEND_URL'] || 'https://api.verbio.app'}/api/twilio/status`;
 
-    if (process.env.NODE_ENV === 'production' && twilioClient) {
+    if (process.env['NODE_ENV'] === 'production' && twilioClient) {
       const isValid = twilio.validateRequest(
         authToken!,
         twilioSignature,

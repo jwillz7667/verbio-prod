@@ -89,7 +89,7 @@ export async function handleConnection(ws: WebSocket, req: IncomingMessage): Pro
     }
 
     if (!agent && business.agents?.length > 0) {
-      agent = business.agents.find((a: AgentConfig) => a.is_active) || business.agents[0];
+      agent = (business.agents.find((a: AgentConfig) => a.is_active) || business.agents[0]) as AgentConfig;
     }
 
     const businessData = business.data_json || {};
@@ -176,8 +176,10 @@ Please assist customers with their inquiries professionally and accurately.`;
         const message = data.toString();
         const event = JSON.parse(message) as StreamEvent;
 
-        if (event.event) {
+        if (event.event && session) {
           await session.handleTwilioEvent(event);
+        } else if (!session) {
+          logger.error('Session is null', { connectionId });
         } else {
           logger.warn('Unknown message format', { message, connectionId });
         }

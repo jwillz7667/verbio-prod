@@ -25,7 +25,7 @@ router.post('/register', asyncHandler(async (req: Request, res: Response) => {
   const { error, value } = registerSchema.validate(req.body);
 
   if (error) {
-    throw new ValidationError(error.details[0].message, error.details);
+    throw new ValidationError(error.details[0]?.message || 'Validation error', error.details);
   }
 
   const { email, password, businessName } = value;
@@ -115,7 +115,7 @@ router.post('/login', asyncHandler(async (req: Request, res: Response) => {
   const { error, value } = loginSchema.validate(req.body);
 
   if (error) {
-    throw new ValidationError(error.details[0].message, error.details);
+    throw new ValidationError(error.details[0]?.message || 'Validation error', error.details);
   }
 
   const { email, password } = value;
@@ -166,7 +166,7 @@ router.post('/login', asyncHandler(async (req: Request, res: Response) => {
   });
 }));
 
-router.post('/logout', (req: Request, res: Response) => {
+router.post('/logout', (_req: Request, res: Response) => {
   clearAuthCookie(res);
   logger.info('User logged out');
 
@@ -280,7 +280,7 @@ router.post('/refresh', authenticate, asyncHandler(async (req: AuthRequest, res:
   const newToken = generateToken({
     userId: req.user.userId,
     email: req.user.email,
-    businessId: req.user.businessId,
+    businessId: req.user.businessId || '',
   });
 
   setAuthCookie(res, newToken);
@@ -306,7 +306,7 @@ router.put('/password', authenticate, asyncHandler(async (req: AuthRequest, res:
   const { error, value } = passwordSchema.validate(req.body);
 
   if (error) {
-    throw new ValidationError(error.details[0].message, error.details);
+    throw new ValidationError(error.details[0]?.message || 'Validation error', error.details);
   }
 
   const { currentPassword, newPassword } = value;

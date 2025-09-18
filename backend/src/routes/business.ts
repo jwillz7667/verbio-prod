@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import Joi from 'joi';
 import { v4 as uuidv4 } from 'uuid';
 import { supabaseAdmin } from '../config/supabase';
@@ -6,7 +6,6 @@ import { authenticate, requireBusinessAccess, AuthRequest } from '../middleware/
 import { ValidationError, NotFoundError, AuthorizationError, ConflictError, CustomError } from '../utils/errorHandler';
 import { logger, logDatabase } from '../utils/logger';
 import { asyncHandler } from '../utils/errorHandler';
-import { IBusinessData, AgentType } from '../types';
 
 const router = Router();
 
@@ -126,7 +125,7 @@ const createAgentSchema = Joi.object({
 });
 
 router.get('/:id', authenticate, requireBusinessAccess, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const businessId = req.params.id;
+  const businessId = req.params['id'];
 
   const { data: business, error } = await supabaseAdmin
     .from('businesses')
@@ -173,7 +172,7 @@ router.get('/:id', authenticate, requireBusinessAccess, asyncHandler(async (req:
 }));
 
 router.put('/:id/data', authenticate, requireBusinessAccess, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const businessId = req.params.id;
+  const businessId = req.params['id'];
 
   if (!req.user || req.user.businessId !== businessId) {
     throw new AuthorizationError('You can only update your own business data');
@@ -182,7 +181,7 @@ router.put('/:id/data', authenticate, requireBusinessAccess, asyncHandler(async 
   const { error: validationError, value } = businessDataSchema.validate(req.body);
 
   if (validationError) {
-    throw new ValidationError(validationError.details[0].message, validationError.details);
+    throw new ValidationError(validationError.details[0]?.message || 'Validation error', validationError.details);
   }
 
   const { data: existingBusiness, error: fetchError } = await supabaseAdmin
@@ -222,7 +221,7 @@ router.put('/:id/data', authenticate, requireBusinessAccess, asyncHandler(async 
 }));
 
 router.post('/:id/phone', authenticate, requireBusinessAccess, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const businessId = req.params.id;
+  const businessId = req.params['id'];
 
   if (!req.user || req.user.businessId !== businessId) {
     throw new AuthorizationError('You can only add phone numbers to your own business');
@@ -231,7 +230,7 @@ router.post('/:id/phone', authenticate, requireBusinessAccess, asyncHandler(asyn
   const { error: validationError, value } = phoneSchema.validate(req.body);
 
   if (validationError) {
-    throw new ValidationError(validationError.details[0].message, validationError.details);
+    throw new ValidationError(validationError.details[0]?.message || 'Validation error', validationError.details);
   }
 
   const { twilio_number, agent_id } = value;
@@ -274,7 +273,7 @@ router.post('/:id/phone', authenticate, requireBusinessAccess, asyncHandler(asyn
     throw new CustomError('Failed to create phone mapping', 500, 'PHONE_MAPPING_ERROR');
   }
 
-  const webhookUrl = `${process.env.BACKEND_URL || 'https://verbio-backend.run.app'}/api/twilio/webhook`;
+  const webhookUrl = `${process.env['BACKEND_URL'] || 'https://verbio-backend.run.app'}/api/twilio/webhook`;
 
   logDatabase('INSERT', 'phone_mappings', { businessId, twilio_number, agent_id });
   logger.info('Phone mapping created', { businessId, twilio_number, webhookUrl });
@@ -288,7 +287,7 @@ router.post('/:id/phone', authenticate, requireBusinessAccess, asyncHandler(asyn
 }));
 
 router.delete('/:id/phone/:phoneId', authenticate, requireBusinessAccess, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { id: businessId, phoneId } = req.params;
+  const { id: businessId, phoneId } = req.params as any;
 
   if (!req.user || req.user.businessId !== businessId) {
     throw new AuthorizationError('You can only remove phone numbers from your own business');
@@ -315,7 +314,7 @@ router.delete('/:id/phone/:phoneId', authenticate, requireBusinessAccess, asyncH
 }));
 
 router.post('/:id/agent', authenticate, requireBusinessAccess, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const businessId = req.params.id;
+  const businessId = req.params['id'];
 
   if (!req.user || req.user.businessId !== businessId) {
     throw new AuthorizationError('You can only create agents for your own business');
@@ -324,7 +323,7 @@ router.post('/:id/agent', authenticate, requireBusinessAccess, asyncHandler(asyn
   const { error: validationError, value } = createAgentSchema.validate(req.body);
 
   if (validationError) {
-    throw new ValidationError(validationError.details[0].message, validationError.details);
+    throw new ValidationError(validationError.details[0]?.message || 'Validation error', validationError.details);
   }
 
   const { data: agent, error: insertError } = await supabaseAdmin
@@ -361,7 +360,7 @@ router.put('/:id/agent/:agentId', authenticate, requireBusinessAccess, asyncHand
   const { error: validationError, value } = agentSchema.validate(req.body);
 
   if (validationError) {
-    throw new ValidationError(validationError.details[0].message, validationError.details);
+    throw new ValidationError(validationError.details[0]?.message || 'Validation error', validationError.details);
   }
 
   const { data: existingAgent, error: fetchError } = await supabaseAdmin
@@ -448,7 +447,7 @@ router.delete('/:id/agent/:agentId', authenticate, requireBusinessAccess, asyncH
 }));
 
 router.get('/:id/agents', authenticate, requireBusinessAccess, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const businessId = req.params.id;
+  const businessId = req.params['id'];
 
   const { data: agents, error } = await supabaseAdmin
     .from('agents')
@@ -475,7 +474,7 @@ router.get('/:id/agents', authenticate, requireBusinessAccess, asyncHandler(asyn
 }));
 
 router.get('/:id/phones', authenticate, requireBusinessAccess, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const businessId = req.params.id;
+  const businessId = req.params['id'];
 
   const { data: phoneMappings, error } = await supabaseAdmin
     .from('phone_mappings')
@@ -503,7 +502,7 @@ router.get('/:id/phones', authenticate, requireBusinessAccess, asyncHandler(asyn
 }));
 
 router.put('/:id', authenticate, requireBusinessAccess, asyncHandler(async (req: AuthRequest, res: Response) => {
-  const businessId = req.params.id;
+  const businessId = req.params['id'];
 
   if (!req.user || req.user.businessId !== businessId) {
     throw new AuthorizationError('You can only update your own business');
@@ -516,7 +515,7 @@ router.put('/:id', authenticate, requireBusinessAccess, asyncHandler(async (req:
   const { error: validationError, value } = updateSchema.validate(req.body);
 
   if (validationError) {
-    throw new ValidationError(validationError.details[0].message, validationError.details);
+    throw new ValidationError(validationError.details[0]?.message || 'Validation error', validationError.details);
   }
 
   const { data: updatedBusiness, error: updateError } = await supabaseAdmin

@@ -5,18 +5,20 @@ import { logger } from '../utils/logger';
 const router = Router();
 
 router.post('/webhook',
-  async (req: Request, res: Response) => {
+  async (req: Request, res: Response): Promise<void> => {
     try {
       const sig = req.headers['stripe-signature'];
 
       if (!sig || typeof sig !== 'string') {
         logger.warn('Stripe webhook missing signature');
-        return res.status(400).json({ error: 'Missing stripe-signature header' });
+        res.status(400).json({ error: 'Missing stripe-signature header' });
+        return;
       }
 
       if (!req.body || !Buffer.isBuffer(req.body)) {
         logger.warn('Stripe webhook missing raw body');
-        return res.status(400).json({ error: 'Webhook requires raw body' });
+        res.status(400).json({ error: 'Webhook requires raw body' });
+        return;
       }
 
       await stripeService.handleWebhook(req.body, sig);
@@ -26,7 +28,8 @@ router.post('/webhook',
       logger.error('Stripe webhook error', { error: error.message });
 
       if (error.message?.includes('Webhook signature verification failed')) {
-        return res.status(400).json({ error: 'Invalid signature' });
+        res.status(400).json({ error: 'Invalid signature' });
+        return;
       }
 
       res.status(400).json({ error: error.message || 'Webhook processing failed' });
@@ -34,16 +37,18 @@ router.post('/webhook',
   }
 );
 
-router.post('/create-payment-intent', async (req: Request, res: Response) => {
+router.post('/create-payment-intent', async (req: Request, res: Response): Promise<void> => {
   try {
     const { amount, metadata } = req.body;
 
     if (!amount || typeof amount !== 'number') {
-      return res.status(400).json({ error: 'Invalid amount' });
+      res.status(400).json({ error: 'Invalid amount' });
+      return;
     }
 
     if (!metadata?.businessId || !metadata?.orderId) {
-      return res.status(400).json({ error: 'Missing required metadata' });
+      res.status(400).json({ error: 'Missing required metadata' });
+      return;
     }
 
     const amountCents = Math.round(amount * 100);
@@ -60,12 +65,13 @@ router.post('/create-payment-intent', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/confirm-payment/:paymentIntentId', async (req: Request, res: Response) => {
+router.post('/confirm-payment/:paymentIntentId', async (req: Request, res: Response): Promise<void> => {
   try {
     const { paymentIntentId } = req.params;
 
     if (!paymentIntentId) {
-      return res.status(400).json({ error: 'Missing payment intent ID' });
+      res.status(400).json({ error: 'Missing payment intent ID' });
+      return;
     }
 
     const paymentIntent = await stripeService.confirmPayment(paymentIntentId);
@@ -81,12 +87,13 @@ router.post('/confirm-payment/:paymentIntentId', async (req: Request, res: Respo
   }
 });
 
-router.get('/charge/:chargeId', async (req: Request, res: Response) => {
+router.get('/charge/:chargeId', async (req: Request, res: Response): Promise<void> => {
   try {
     const { chargeId } = req.params;
 
     if (!chargeId) {
-      return res.status(400).json({ error: 'Missing charge ID' });
+      res.status(400).json({ error: 'Missing charge ID' });
+      return;
     }
 
     const charge = await stripeService.getCharge(chargeId);
@@ -105,13 +112,14 @@ router.get('/charge/:chargeId', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/refund/:chargeId', async (req: Request, res: Response) => {
+router.post('/refund/:chargeId', async (req: Request, res: Response): Promise<void> => {
   try {
     const { chargeId } = req.params;
     const { amount } = req.body;
 
     if (!chargeId) {
-      return res.status(400).json({ error: 'Missing charge ID' });
+      res.status(400).json({ error: 'Missing charge ID' });
+      return;
     }
 
     const amountCents = amount ? Math.round(amount * 100) : undefined;
@@ -129,9 +137,9 @@ router.post('/refund/:chargeId', async (req: Request, res: Response) => {
   }
 });
 
-router.get('/health', (req: Request, res: Response) => {
-  const hasStripeKey = !!process.env.STRIPE_SECRET_KEY;
-  const hasWebhookSecret = !!process.env.STRIPE_WEBHOOK_SECRET;
+router.get('/health', (_req: Request, res: Response) => {
+  const hasStripeKey = !!process.env['STRIPE_SECRET_KEY'];
+  const hasWebhookSecret = !!process.env['STRIPE_WEBHOOK_SECRET'];
 
   res.json({
     status: hasStripeKey && hasWebhookSecret ? 'healthy' : 'misconfigured',
