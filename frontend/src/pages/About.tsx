@@ -6,7 +6,6 @@ import {
   Target,
   Lightbulb,
   Heart,
-  Users,
   Phone,
   ShoppingCart,
   Calendar,

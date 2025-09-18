@@ -9,17 +9,13 @@ import {
   Mic,
   Globe,
   Zap,
-  Shield,
   BarChart3,
   Clock,
-  Users,
   Star,
   Play,
   ChevronRight,
   Sparkles,
   Bot,
-  Headphones,
-  MessageSquare,
 } from 'lucide-react';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
