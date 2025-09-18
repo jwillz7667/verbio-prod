@@ -1,485 +1,418 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import toast from 'react-hot-toast';
+import { useQuery } from '@tanstack/react-query';
 import {
-  PlusIcon,
-  TrashIcon,
-  PencilIcon,
-  PhoneIcon,
-  CloudArrowUpIcon,
-  CheckCircleIcon,
-  ExclamationCircleIcon,
-  CpuChipIcon,
-  SparklesIcon,
-} from '@heroicons/react/24/outline';
+  LineChart,
+  Line,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts';
+import {
+  Phone,
+  CreditCard,
+  Activity,
+  TrendingUp,
+  Users,
+  DollarSign,
+  Clock,
+  CheckCircle,
+  AlertCircle,
+  Bot,
+  Zap,
+  PhoneCall,
+  PhoneMissed,
+  PhoneOff,
+  ChevronRight,
+} from 'lucide-react';
+import MetricCard from '../components/dashboard/MetricCard';
 import api from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
-import type { Agent, AgentType, Business, BusinessData } from '../types';
+import toast from 'react-hot-toast';
+import clsx from 'clsx';
 
 const Dashboard: React.FC = () => {
-  const [business, setBusiness] = useState<Business | null>(null);
-  const [dataJson, setDataJson] = useState<BusinessData>({});
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
-  const [newAgent, setNewAgent] = useState<{
-    name: string;
-    type: AgentType;
-    prompt: string;
-    voice: string;
-  }>({
-    name: '',
-    type: 'service',
-    prompt: '',
-    voice: 'cedar',
-  });
+  const [selectedTimeRange, setSelectedTimeRange] = useState('30d');
 
-  useEffect(() => {
-    fetchBusinessData();
-  }, []);
-
-  const fetchBusinessData = async () => {
-    try {
-      setIsLoading(true);
-      const [, businessRes, agentsRes] = await Promise.all([
-        api.getProfile(),
-        api.getBusiness().catch(() => null),
-        api.getAgents().catch(() => ({ agents: [] })),
-      ]);
-
-      if (businessRes) {
-        setBusiness(businessRes.business);
-        setDataJson(businessRes.business.data_json || {
-          menu: [],
-          hours: {},
-          pricing: {},
-          services: [],
-        });
-        setPhoneNumber(businessRes.business.phone_number || '');
-      }
-
-      if (agentsRes?.agents) {
-        setAgents(agentsRes.agents);
-      }
-    } catch (error) {
-      console.error('Error fetching business data:', error);
-      toast.error('Failed to load business data');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleUpdateData = async () => {
-    if (!business?.id) {
-      toast.error('Business not found');
-      return;
-    }
-
-    try {
-      setIsSaving(true);
-      await api.uploadBusinessData({
-        businessId: business.id,
-        data: dataJson,
-      });
-      toast.success('Business data updated successfully');
-      fetchBusinessData();
-    } catch (error: any) {
-      console.error('Error updating data:', error);
-      toast.error(error.response?.data?.message || 'Failed to update business data');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleAddPhone = async () => {
-    if (!phoneNumber || !phoneNumber.match(/^\+?1?\d{10,14}$/)) {
-      toast.error('Please enter a valid phone number');
-      return;
-    }
-
-    if (!business?.id) {
-      toast.error('Business not found');
-      return;
-    }
-
-    try {
-      await api.mapPhoneNumber(phoneNumber);
-      toast.success('Phone number mapped successfully');
-      fetchBusinessData();
-    } catch (error: any) {
-      console.error('Error mapping phone:', error);
-      toast.error(error.response?.data?.message || 'Failed to map phone number');
-    }
-  };
-
-  const handleUpdateAgent = async (agentId: string, updates: Partial<Agent>) => {
-    try {
-      await api.updateAgent(agentId, updates);
-      toast.success('Agent updated successfully');
-      setEditingAgentId(null);
-      fetchBusinessData();
-    } catch (error: any) {
-      console.error('Error updating agent:', error);
-      toast.error(error.response?.data?.message || 'Failed to update agent');
-    }
-  };
-
-  const handleCreateAgent = async () => {
-    if (!newAgent.name || !newAgent.prompt) {
-      toast.error('Please fill in agent name and prompt');
-      return;
-    }
-
-    if (!business?.id) {
-      toast.error('Business not found');
-      return;
-    }
-
-    try {
-      await api.createAgent({
-        business_id: business.id,
-        name: newAgent.name,
-        type: newAgent.type,
-        prompt: newAgent.prompt,
-        voice_config: {
-          voice: newAgent.voice,
-          eagerness: 'medium',
-          noise_reduction: 'auto',
-        },
-        is_active: true,
-      });
-      toast.success('Agent created successfully');
-      setNewAgent({ name: '', type: 'service', prompt: '', voice: 'cedar' });
-      fetchBusinessData();
-    } catch (error: any) {
-      console.error('Error creating agent:', error);
-      toast.error(error.response?.data?.message || 'Failed to create agent');
-    }
-  };
-
-  const handleDeleteAgent = async (agentId: string) => {
-    if (!confirm('Are you sure you want to delete this agent?')) {
-      return;
-    }
-
-    try {
-      await api.deleteAgent(agentId);
-      toast.success('Agent deleted successfully');
-      fetchBusinessData();
-    } catch (error: any) {
-      console.error('Error deleting agent:', error);
-      toast.error(error.response?.data?.message || 'Failed to delete agent');
-    }
-  };
-
-  const agentTypeColors = {
-    service: 'bg-blue-100 text-blue-700',
-    order: 'bg-green-100 text-green-700',
-    payment: 'bg-purple-100 text-purple-700',
-  };
-
-  const voiceOptions = [
-    'alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse', 'cedar', 'marin'
+  // Mock data for charts
+  const volumeTrendData = [
+    { date: 'Jan 1', outbound: 120, inbound: 80, web: 45 },
+    { date: 'Jan 7', outbound: 145, inbound: 95, web: 52 },
+    { date: 'Jan 14', outbound: 160, inbound: 110, web: 58 },
+    { date: 'Jan 21', outbound: 135, inbound: 102, web: 48 },
+    { date: 'Jan 28', outbound: 180, inbound: 125, web: 65 },
+    { date: 'Feb 4', outbound: 195, inbound: 140, web: 72 },
+    { date: 'Feb 11', outbound: 210, inbound: 155, web: 78 },
   ];
 
-  if (isLoading) {
-    return <LoadingSpinner fullScreen message="Loading business data..." />;
-  }
+  const outcomeData = [
+    { name: 'Answered', value: 68, color: '#8b5cf6' },
+    { name: 'Missed', value: 15, color: '#3b82f6' },
+    { name: 'Failed', value: 10, color: '#ef4444' },
+    { name: 'Voicemail', value: 7, color: '#10b981' },
+  ];
+
+  const setupSteps = [
+    { id: 1, title: 'Connect your phone number', completed: true },
+    { id: 2, title: 'Configure AI agents', completed: true },
+    { id: 3, title: 'Set up webhooks', completed: false },
+    { id: 4, title: 'Test voice calls', completed: false },
+    { id: 5, title: 'Enable analytics', completed: false },
+  ];
+
+  const recentActivities = [
+    { id: 1, type: 'call', description: 'Inbound call handled by AI', time: '5 minutes ago', status: 'success' },
+    { id: 2, type: 'order', description: 'New order #1234 received', time: '15 minutes ago', status: 'success' },
+    { id: 3, type: 'credit', description: '1,000 credits purchased', time: '1 hour ago', status: 'info' },
+    { id: 4, type: 'agent', description: 'AI agent "Support Bot" updated', time: '2 hours ago', status: 'info' },
+    { id: 5, type: 'call', description: 'Call failed - no agent available', time: '3 hours ago', status: 'error' },
+  ];
+
+  const completedSteps = setupSteps.filter((step) => step.completed).length;
+  const setupProgress = (completedSteps / setupSteps.length) * 100;
+
+  // Fetch metrics data
+  const { data: metrics, isLoading: metricsLoading } = useQuery({
+    queryKey: ['dashboard-metrics'],
+    queryFn: async () => {
+      // Mock API response
+      return {
+        activeSessions: 3,
+        creditsUsed: 550,
+        totalCalls: 150,
+        successRate: 94,
+        revenue: 2450,
+      };
+    },
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
+
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case 'call':
+        return PhoneCall;
+      case 'order':
+        return DollarSign;
+      case 'credit':
+        return CreditCard;
+      case 'agent':
+        return Bot;
+      default:
+        return Activity;
+    }
+  };
+
+  const getActivityColor = (status: string) => {
+    switch (status) {
+      case 'success':
+        return 'text-green-600 bg-green-50';
+      case 'error':
+        return 'text-red-600 bg-red-50';
+      case 'info':
+        return 'text-blue-600 bg-blue-50';
+      default:
+        return 'text-gray-600 bg-gray-50';
+    }
+  };
 
   return (
     <div className="space-y-6">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex items-center justify-between"
-      >
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage your business data, phone numbers, and AI agents
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          {business?.phone_number && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-green-50 rounded-lg">
-              <PhoneIcon className="h-5 w-5 text-green-600" />
-              <span className="text-sm font-medium text-green-900">
-                {business.phone_number}
-              </span>
-            </div>
-          )}
-        </div>
-      </motion.div>
+      {/* Page Header */}
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">Overview</h1>
+        <p className="mt-1 text-sm text-gray-500">Monitor your voice intelligence platform performance</p>
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Active Sessions Alert */}
+      {metrics?.activeSessions > 0 && (
         <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.1 }}
-          className="bg-white rounded-lg shadow p-6"
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+            <span className="text-sm font-medium text-green-900">{metrics.activeSessions} Active Voice Sessions</span>
+          </div>
+          <button className="text-sm text-green-700 hover:text-green-800 font-medium">View Details →</button>
+        </motion.div>
+      )}
+
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <MetricCard
+          title="Active Sessions"
+          value={metrics?.activeSessions || 0}
+          subtitle="Live now"
+          icon={Phone}
+          iconColor="text-green-600"
+          loading={metricsLoading}
+        />
+        <MetricCard
+          title="Credits Used"
+          value={metrics?.creditsUsed || 0}
+          subtitle="This month"
+          change={{ value: 12, type: 'increase' }}
+          icon={CreditCard}
+          iconColor="text-blue-600"
+          loading={metricsLoading}
+        />
+        <MetricCard
+          title="Total Calls"
+          value={metrics?.totalCalls || 0}
+          subtitle="Last 30 days"
+          change={{ value: 5, type: 'increase' }}
+          icon={PhoneCall}
+          iconColor="text-purple-600"
+          loading={metricsLoading}
+        />
+        <MetricCard
+          title="Success Rate"
+          value={`${metrics?.successRate || 0}%`}
+          subtitle="Completion rate"
+          change={{ value: 2, type: 'increase' }}
+          icon={TrendingUp}
+          iconColor="text-green-600"
+          loading={metricsLoading}
+        />
+        <MetricCard
+          title="Revenue"
+          value={`$${metrics?.revenue || 0}`}
+          subtitle="This month"
+          change={{ value: 18, type: 'increase' }}
+          icon={DollarSign}
+          iconColor="text-yellow-600"
+          loading={metricsLoading}
+        />
+      </div>
+
+      {/* Charts and Progress Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Voice Volume Trend Chart */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="lg:col-span-2 bg-white rounded-xl shadow-md p-6 border border-gray-200"
+        >
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-gray-900">Voice Volume Trends</h2>
+            <select
+              value={selectedTimeRange}
+              onChange={(e) => setSelectedTimeRange(e.target.value)}
+              className="px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="7d">Last 7 days</option>
+              <option value="30d">Last 30 days</option>
+              <option value="90d">Last 90 days</option>
+            </select>
+          </div>
+
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={volumeTrendData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+              <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} />
+              <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'white',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '8px',
+                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: '12px' }} iconType="circle" />
+              <Line
+                type="monotone"
+                dataKey="outbound"
+                stroke="#8b5cf6"
+                strokeWidth={2}
+                dot={{ fill: '#8b5cf6', r: 3 }}
+                activeDot={{ r: 5 }}
+                name="Outbound"
+              />
+              <Line
+                type="monotone"
+                dataKey="inbound"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dot={{ fill: '#3b82f6', r: 3 }}
+                activeDot={{ r: 5 }}
+                name="Inbound"
+              />
+              <Line
+                type="monotone"
+                dataKey="web"
+                stroke="#06b6d4"
+                strokeWidth={2}
+                dot={{ fill: '#06b6d4', r: 3 }}
+                activeDot={{ r: 5 }}
+                name="Web"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </motion.div>
+
+        {/* Setup Progress */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="bg-white rounded-xl shadow-md p-6 border border-gray-200"
         >
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Business Data</h2>
-            <button
-              onClick={handleUpdateData}
-              disabled={isSaving}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <CloudArrowUpIcon className="h-4 w-4" />
-              {isSaving ? 'Saving...' : 'Save Changes'}
-            </button>
+            <h2 className="text-lg font-semibold text-gray-900">Setup Progress</h2>
+            <span className="text-2xl font-bold text-primary-600">{Math.round(setupProgress)}%</span>
           </div>
 
-          <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 max-h-96 overflow-auto">
-            <pre className="text-sm font-mono">
-              <code>{JSON.stringify(dataJson, null, 2)}</code>
-            </pre>
+          <div className="mb-6">
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <motion.div
+                className="bg-gradient-to-r from-primary-500 to-primary-600 h-2 rounded-full"
+                initial={{ width: 0 }}
+                animate={{ width: `${setupProgress}%` }}
+                transition={{ duration: 1, ease: 'easeOut' }}
+              />
+            </div>
           </div>
 
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-700">
-              💡 Tip: Click on values to edit them directly. Use the + icon to add new fields.
-            </p>
+          <div className="space-y-3">
+            {setupSteps.map((step) => (
+              <div key={step.id} className="flex items-center gap-3">
+                {step.completed ? (
+                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                ) : (
+                  <div className="w-5 h-5 border-2 border-gray-300 rounded-full flex-shrink-0" />
+                )}
+                <span className={clsx('text-sm', step.completed ? 'text-gray-700' : 'text-gray-400')}>
+                  {step.title}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <button className="w-full mt-6 px-4 py-2 bg-primary-50 text-primary-700 rounded-lg hover:bg-primary-100 transition-colors text-sm font-medium">
+            Complete Setup →
+          </button>
+        </motion.div>
+      </div>
+
+      {/* Second Row: Pie Chart and Activities */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Voice Outcome Breakdown */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="bg-white rounded-xl shadow-md p-6 border border-gray-200"
+        >
+          <h2 className="text-lg font-semibold text-gray-900 mb-6">Call Outcomes</h2>
+
+          <ResponsiveContainer width="100%" height={250}>
+            <PieChart>
+              <Pie
+                data={outcomeData}
+                cx="50%"
+                cy="50%"
+                innerRadius={60}
+                outerRadius={90}
+                paddingAngle={2}
+                dataKey="value"
+              >
+                {outcomeData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip />
+            </PieChart>
+          </ResponsiveContainer>
+
+          <div className="mt-4 space-y-2">
+            {outcomeData.map((item) => (
+              <div key={item.name} className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
+                  <span className="text-sm text-gray-600">{item.name}</span>
+                </div>
+                <span className="text-sm font-medium text-gray-900">{item.value}%</span>
+              </div>
+            ))}
           </div>
         </motion.div>
 
+        {/* Recent Activities */}
         <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white rounded-lg shadow p-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="lg:col-span-2 bg-white rounded-xl shadow-md p-6 border border-gray-200"
         >
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Phone Number</h2>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-lg font-semibold text-gray-900">Recent Activities</h2>
+            <button className="text-sm text-primary-600 hover:text-primary-700 font-medium">View all →</button>
+          </div>
 
           <div className="space-y-4">
-            <div className="flex gap-2">
-              <input
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => setPhoneNumber(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAddPhone()}
-                placeholder="+1234567890"
-                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent"
-              />
-              <button
-                onClick={handleAddPhone}
-                className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
-              >
-                Map Number
-              </button>
-            </div>
+            {recentActivities.map((activity) => {
+              const Icon = getActivityIcon(activity.type);
+              const colorClass = getActivityColor(activity.status);
 
-            {business?.phone_number ? (
-              <div className="p-4 bg-green-50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <CheckCircleIcon className="h-5 w-5 text-green-600" />
-                  <span className="text-sm font-medium text-green-900">
-                    Phone number mapped successfully
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-green-700">
-                  Incoming calls to {business.phone_number} will be handled by your AI agents
-                </p>
-              </div>
-            ) : (
-              <div className="p-4 bg-yellow-50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <ExclamationCircleIcon className="h-5 w-5 text-yellow-600" />
-                  <span className="text-sm font-medium text-yellow-900">
-                    No phone number mapped
-                  </span>
-                </div>
-                <p className="mt-1 text-sm text-yellow-700">
-                  Map a Twilio phone number to start receiving calls
-                </p>
-              </div>
-            )}
+              return (
+                <motion.div
+                  key={activity.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                >
+                  <div
+                    className={clsx('w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0', colorClass)}
+                  >
+                    <Icon className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{activity.description}</p>
+                    <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
+                  </div>
+                  <button className="text-gray-400 hover:text-gray-600">
+                    <ChevronRight className="w-5 h-5" />
+                  </button>
+                </motion.div>
+              );
+            })}
           </div>
         </motion.div>
       </div>
 
+      {/* Credits Bar */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="bg-white rounded-lg shadow p-6"
+        transition={{ delay: 0.6 }}
+        className="bg-gradient-to-r from-primary-50 to-primary-100 rounded-xl p-6 border border-primary-200"
       >
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-semibold text-gray-900">AI Agents</h2>
-          <div className="flex items-center gap-2">
-            <CpuChipIcon className="h-5 w-5 text-violet-600" />
-            <span className="text-sm text-gray-600">
-              {agents.length} {agents.length === 1 ? 'Agent' : 'Agents'}
-            </span>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          {agents.map((agent) => (
-            <div
-              key={agent.id}
-              className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
-            >
-              {editingAgentId === agent.id ? (
-                <div className="space-y-3">
-                  <input
-                    type="text"
-                    value={agent.name}
-                    onChange={(e) => {
-                      const updated = agents.map((a) =>
-                        a.id === agent.id ? { ...a, name: e.target.value } : a
-                      );
-                      setAgents(updated);
-                    }}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                  <textarea
-                    value={agent.prompt}
-                    onChange={(e) => {
-                      const updated = agents.map((a) =>
-                        a.id === agent.id ? { ...a, prompt: e.target.value } : a
-                      );
-                      setAgents(updated);
-                    }}
-                    rows={4}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  />
-                  <select
-                    value={agent.voice_config.voice}
-                    onChange={(e) => {
-                      const updated = agents.map((a) =>
-                        a.id === agent.id
-                          ? { ...a, voice_config: { ...a.voice_config, voice: e.target.value } }
-                          : a
-                      );
-                      setAgents(updated);
-                    }}
-                    className="px-3 py-2 border border-gray-300 rounded-lg"
-                  >
-                    {voiceOptions.map((voice) => (
-                      <option key={voice} value={voice}>
-                        {voice}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() =>
-                        handleUpdateAgent(agent.id, {
-                          name: agent.name,
-                          prompt: agent.prompt,
-                          voice_config: agent.voice_config,
-                        })
-                      }
-                      className="px-3 py-1 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditingAgentId(null);
-                        fetchBusinessData();
-                      }}
-                      className="px-3 py-1 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-medium text-gray-900">{agent.name}</h3>
-                      <span
-                        className={`px-2 py-1 text-xs font-medium rounded-full ${
-                          agentTypeColors[agent.type]
-                        }`}
-                      >
-                        {agent.type}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        Voice: {agent.voice_config.voice}
-                      </span>
-                    </div>
-                    <p className="mt-2 text-sm text-gray-600 line-clamp-2">{agent.prompt}</p>
-                  </div>
-                  <div className="flex items-center gap-2 ml-4">
-                    <button
-                      onClick={() => setEditingAgentId(agent.id)}
-                      className="p-1 text-gray-500 hover:text-violet-600 transition-colors"
-                    >
-                      <PencilIcon className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteAgent(agent.id)}
-                      className="p-1 text-gray-500 hover:text-red-600 transition-colors"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center shadow-sm">
+              <CreditCard className="w-6 h-6 text-primary-600" />
             </div>
-          ))}
-
-          <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
-            <h3 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
-              <SparklesIcon className="h-5 w-5 text-violet-600" />
-              Create New Agent
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input
-                type="text"
-                value={newAgent.name}
-                onChange={(e) => setNewAgent({ ...newAgent, name: e.target.value })}
-                placeholder="Agent Name"
-                className="px-3 py-2 border border-gray-300 rounded-lg"
-              />
-              <select
-                value={newAgent.type}
-                onChange={(e) =>
-                  setNewAgent({
-                    ...newAgent,
-                    type: e.target.value as AgentType,
-                  })
-                }
-                className="px-3 py-2 border border-gray-300 rounded-lg"
-              >
-                <option value="service">Service</option>
-                <option value="order">Order</option>
-                <option value="payment">Payment</option>
-              </select>
-              <select
-                value={newAgent.voice}
-                onChange={(e) => setNewAgent({ ...newAgent, voice: e.target.value })}
-                className="px-3 py-2 border border-gray-300 rounded-lg"
-              >
-                {voiceOptions.map((voice) => (
-                  <option key={voice} value={voice}>
-                    Voice: {voice}
-                  </option>
-                ))}
-              </select>
-              <div></div>
-              <textarea
-                value={newAgent.prompt}
-                onChange={(e) => setNewAgent({ ...newAgent, prompt: e.target.value })}
-                placeholder="Agent prompt instructions..."
-                rows={3}
-                className="col-span-2 px-3 py-2 border border-gray-300 rounded-lg"
-              />
-              <button
-                onClick={handleCreateAgent}
-                className="col-span-2 inline-flex items-center justify-center gap-2 px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 transition-colors"
-              >
-                <PlusIcon className="h-4 w-4" />
-                Create Agent
-              </button>
+            <div>
+              <p className="text-2xl font-bold text-gray-900">2,400 credits remaining</p>
+              <p className="text-sm text-gray-600">Approximately 24 hours of voice calls</p>
             </div>
           </div>
+          <button className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium shadow-lg hover:shadow-xl">
+            Buy More Credits
+          </button>
         </div>
       </motion.div>
     </div>

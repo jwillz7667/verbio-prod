@@ -11,9 +11,7 @@ export default defineConfig(({ mode }) => {
         jsxRuntime: 'automatic',
         jsxImportSource: 'react',
         babel: {
-          plugins: [
-            ['@babel/plugin-transform-react-jsx', { runtime: 'automatic' }],
-          ],
+          plugins: [['@babel/plugin-transform-react-jsx', { runtime: 'automatic' }]],
         },
       }),
     ],
@@ -82,8 +80,8 @@ export default defineConfig(({ mode }) => {
             'react-vendor': ['react', 'react-dom', 'react-router-dom'],
             'ui-vendor': ['@headlessui/react', '@heroicons/react', 'framer-motion'],
             'data-vendor': ['@tanstack/react-table', '@tanstack/react-query', 'axios'],
-            'supabase': ['@supabase/supabase-js'],
-            'utils': ['date-fns', 'clsx', 'zod'],
+            supabase: ['@supabase/supabase-js'],
+            utils: ['date-fns', 'clsx', 'zod'],
           },
         },
       },
@@ -107,9 +105,7 @@ export default defineConfig(({ mode }) => {
     },
 
     css: {
-      postcss: {
-        plugins: [],
-      },
+      postcss: './postcss.config.js',
     },
   };
 });
