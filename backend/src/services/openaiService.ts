@@ -1,14 +1,11 @@
 import WebSocket from 'ws';
 import { EventEmitter } from 'events';
 import { spawn } from 'child_process';
-import Stripe from 'stripe';
+import { v4 as uuidv4 } from 'uuid';
 import { supabaseAdmin } from '../config/supabase';
+import { stripeService } from './stripeService';
 import { logger } from '../utils/logger';
 import { StreamEvent } from '../types/twilio';
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2023-10-16',
-});
 
 interface RealtimeConfig {
   instructions: string;
@@ -56,6 +53,10 @@ export class RealtimeSession extends EventEmitter {
   private twilioStreamSid: string | null = null;
   private ffmpegPath: string;
   private conversationHistory: any[] = [];
+  private retryCount: number = 0;
+  private maxRetries: number = 3;
+  private retryDelay: number = 1000;
+  private isConnected: boolean = false;
 
   constructor(apiKey: string, config: RealtimeConfig) {
     super();
@@ -449,17 +450,15 @@ export class RealtimeSession extends EventEmitter {
 
   private async processPayment(args: { amount: number; orderId?: string }): Promise<any> {
     try {
-      const charge = await stripe.charges.create({
-        amount: Math.round(args.amount * 100),
-        currency: 'usd',
-        source: 'tok_visa',
-        description: `Payment for order ${args.orderId || 'unknown'}`,
-        metadata: {
-          business_id: this.config.businessId,
-          customer_phone: this.config.customerPhone,
-          order_id: args.orderId || '',
-          session_id: this.sessionId || '',
-        },
+      const amountCents = Math.round(args.amount * 100);
+      const orderId = args.orderId || uuidv4();
+
+      const charge = await stripeService.createCharge(amountCents, {
+        businessId: this.config.businessId,
+        orderId,
+        customerPhone: this.config.customerPhone,
+        description: `Payment for order ${orderId}`,
+        agentId: this.sessionId,
       });
 
       const { data: payment, error: paymentError } = await supabaseAdmin
@@ -468,10 +467,16 @@ export class RealtimeSession extends EventEmitter {
           business_id: this.config.businessId,
           order_id: args.orderId,
           amount: args.amount,
-          status: charge.status === 'succeeded' ? 'succeeded' : 'failed',
+          currency: 'usd',
+          status: charge.status === 'succeeded' ? 'completed' : 'failed',
           payment_method: 'card',
-          stripe_charge_id: charge.id,
-          stripe_payment_intent_id: charge.payment_intent as string,
+          stripe_payment_id: charge.id,
+          payment_metadata: {
+            receipt_url: charge.receipt_url,
+            stripe_status: charge.status,
+            source: charge.source,
+            metadata: charge.metadata,
+          },
         })
         .select()
         .single();

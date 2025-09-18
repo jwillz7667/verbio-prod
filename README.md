@@ -1,272 +1,350 @@
-# Verbio - AI Voice Agent Platform
+# Verbio - AI Voice Agents for Small Businesses
 
-Enterprise-grade AI voice agent platform for small businesses. Built with TypeScript, React, Node.js, Twilio Media Streams, OpenAI Realtime API, Supabase, and Stripe.
+[![CI/CD Pipeline](https://github.com/jwillz7667/verbio-prod/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/jwillz7667/verbio-prod/actions)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20-green)](https://nodejs.org/)
 
-## Architecture Overview
+## Overview
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Verbio Platform                          │
-├───────────────────────────┬─────────────────────────────────────┤
-│      Frontend (React)     │        Backend (Node.js)            │
-│  - Dashboard UI           │  - Express API Server               │
-│  - Agent Configuration    │  - WebSocket Handler                │
-│  - Order Management       │  - Twilio Integration               │
-│  - Real-time Updates      │  - OpenAI Realtime Client          │
-│  - Payment Tracking       │  - Stripe Payment Processing       │
-│                           │  - Supabase DB Operations          │
-├───────────────────────────┴─────────────────────────────────────┤
-│                    External Services                             │
-│  - Twilio (Voice/SMS)                                           │
-│  - OpenAI (Realtime API)                                        │
-│  - Supabase (Database/Auth/Realtime)                           │
-│  - Stripe (Payments)                                            │
-│  - Google Cloud Run (Backend Hosting)                           │
-│  - Vercel (Frontend Hosting)                                    │
-└─────────────────────────────────────────────────────────────────┘
-```
+Verbio is an enterprise-grade platform that enables small businesses to deploy AI-powered voice agents for customer service, order taking, and payment processing. Built with cutting-edge technologies including OpenAI's Realtime API, Twilio Media Streams, and Supabase.
+
+## Features
+
+- 🤖 **AI Voice Agents** - Configure multiple agents for different purposes (service, orders, payments)
+- 📞 **Twilio Integration** - Handle inbound calls with natural conversation flow
+- 🎙️ **OpenAI Realtime API** - Latest GPT-Realtime model with semantic VAD
+- 💳 **Stripe Payments** - Secure payment processing with webhook handling
+- 📊 **Real-time Dashboard** - Monitor orders and calls with live updates
+- 🔒 **Enterprise Security** - JWT auth, RLS, CSRF protection, input sanitization
+- 📱 **Responsive Design** - Works seamlessly on desktop and mobile
+- 🚀 **Cloud-Native** - Deploy to Google Cloud Run & Vercel
 
 ## Tech Stack
 
-- **Frontend**: React 18, Vite, TypeScript, TailwindCSS, TanStack Table, Supabase Client
-- **Backend**: Node.js, Express, WebSocket (ws), TypeScript
-- **Database**: Supabase (PostgreSQL with RLS)
-- **Voice**: Twilio Media Streams API, OpenAI Realtime API (GA)
-- **Payments**: Stripe API
-- **Authentication**: Supabase Auth (JWT)
-- **Deployment**: Vercel (Frontend), Google Cloud Run (Backend)
-- **Testing**: Jest, Supertest, Playwright
-- **CI/CD**: GitHub Actions, Husky, ESLint, Prettier
+### Backend
+- Node.js 20 + TypeScript
+- Express.js with WebSocket support
+- OpenAI Realtime API (gpt-realtime model)
+- Twilio Media Streams WebSocket
+- Stripe API 2024-06-20
+- Supabase (PostgreSQL + Realtime)
+- Jest for testing
+
+### Frontend
+- React 18.2 + TypeScript
+- Vite for blazing fast builds
+- TanStack React Table & Query
+- Tailwind CSS + Framer Motion
+- Zustand state management
+- Playwright for E2E testing
 
 ## Prerequisites
 
-- Node.js >= 18.0.0
-- npm >= 9.0.0
-- Docker (optional, for containerized development)
-- Google Cloud SDK (for deployment)
-- Vercel CLI (for frontend deployment)
+- Node.js 20+
+- npm or yarn
+- Twilio account with phone number
+- OpenAI API key with Realtime access
+- Stripe account
+- Supabase project
+- Google Cloud Platform account (for deployment)
+- Vercel account (for frontend deployment)
 
-## Setup Instructions
+## Installation
 
-### 1. Clone Repository
-
+1. **Clone the repository**
 ```bash
-git clone https://github.com/verbio/verbio-app.git
+git clone https://github.com/jwillz7667/verbio-prod.git
 cd verbio-app
 ```
 
-### 2. Environment Configuration
-
-Copy `.env.example` to `.env` and fill in your credentials:
-
+2. **Install dependencies**
 ```bash
-cp .env.example .env
-```
-
-Required environment variables:
-- Supabase credentials (URL, Anon Key, Service Key)
-- Twilio credentials (Account SID, Auth Token, Phone Number)
-- OpenAI API Key
-- Stripe keys (Secret, Webhook Secret, Publishable)
-- JWT Secret
-- Backend/Frontend URLs
-
-### 3. Install Dependencies
-
-```bash
-# Install root dependencies
 npm install
-
-# Install backend dependencies
-cd backend && npm install && cd ..
-
-# Install frontend dependencies
-cd frontend && npm install && cd ..
 ```
 
-### 4. Database Setup
+3. **Set up environment variables**
 
-Create Supabase tables and RLS policies:
-
+Create `.env.local` for development:
 ```bash
-npm run db:init
+cp .env.example .env.local
 ```
 
-### 5. Development
+Update with your actual values:
+```env
+# Backend
+BACKEND_URL=http://localhost:8080
+NODE_ENV=development
+PORT=8080
 
-Run both frontend and backend in development mode:
+# Supabase
+SUPABASE_URL=https://xxx.supabase.co
+SUPABASE_ANON_KEY=eyJhbGc...
+SUPABASE_SERVICE_KEY=eyJhbGc...
 
+# OpenAI
+OPENAI_API_KEY=sk-proj-...
+
+# Twilio
+TWILIO_ACCOUNT_SID=AC...
+TWILIO_AUTH_TOKEN=...
+TWILIO_PHONE_NUMBER=+1...
+
+# Stripe
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+
+# Security
+JWT_SECRET=your-jwt-secret
+COOKIE_SECRET=your-cookie-secret
+CSRF_SECRET=your-csrf-secret
+
+# Frontend
+VITE_BACKEND_URL=http://localhost:8080
+VITE_SUPABASE_URL=https://xxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGc...
+```
+
+4. **Set up Supabase database**
+```bash
+cd backend
+npx supabase init
+npx supabase db push
+```
+
+5. **Run development servers**
 ```bash
 npm run dev
 ```
 
-- Frontend: http://localhost:5173
-- Backend: http://localhost:8080
-
-### 6. Testing
-
-```bash
-# Run all tests
-npm test
-
-# Run backend tests only
-npm run test:backend
-
-# Run frontend tests only
-npm run test:frontend
-
-# Run with coverage
-npm test -- --coverage
-```
-
-### 7. Linting & Formatting
-
-```bash
-# Lint all files
-npm run lint
-
-# Fix linting issues
-npm run lint:fix
-
-# Format all files
-npm run format
-```
+This starts:
+- Backend on http://localhost:8080
+- Frontend on http://localhost:5173
 
 ## Deployment
 
-### Frontend (Vercel)
+### Backend Deployment (Google Cloud Run)
 
+1. **Set up Google Cloud**
+```bash
+# Install gcloud CLI
+curl https://sdk.cloud.google.com | bash
+
+# Authenticate
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+
+# Enable required APIs
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com
+```
+
+2. **Create secrets in Secret Manager**
+```bash
+echo -n "your-twilio-sid" | gcloud secrets create twilio-account-sid --data-file=-
+echo -n "your-twilio-token" | gcloud secrets create twilio-auth-token --data-file=-
+echo -n "your-openai-key" | gcloud secrets create openai-api-key --data-file=-
+echo -n "your-stripe-key" | gcloud secrets create stripe-secret-key --data-file=-
+echo -n "your-stripe-webhook" | gcloud secrets create stripe-webhook-secret --data-file=-
+echo -n "your-supabase-url" | gcloud secrets create supabase-url --data-file=-
+echo -n "your-supabase-key" | gcloud secrets create supabase-service-key --data-file=-
+echo -n "your-jwt-secret" | gcloud secrets create jwt-secret --data-file=-
+```
+
+3. **Deploy with Cloud Build**
+```bash
+gcloud builds submit --config cloudbuild.yaml
+```
+
+4. **Update Twilio webhook URL**
+
+In Twilio Console, set your phone number webhook to:
+```
+https://api.verbio.app/api/twilio/webhook
+```
+
+5. **Update Stripe webhook URL**
+
+In Stripe Dashboard, add webhook endpoint:
+```
+https://api.verbio.app/api/stripe/webhook
+```
+
+Select events:
+- `charge.succeeded`
+- `charge.failed`
+- `charge.refunded`
+
+### Frontend Deployment (Vercel)
+
+1. **Install Vercel CLI**
+```bash
+npm i -g vercel
+```
+
+2. **Deploy to Vercel**
 ```bash
 cd frontend
 vercel --prod
 ```
 
-### Backend (Google Cloud Run)
+3. **Set environment variables in Vercel Dashboard**
+```
+VITE_BACKEND_URL=https://api.verbio.app
+VITE_SUPABASE_URL=https://xxx.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGc...
+```
 
+### CI/CD with GitHub Actions
+
+1. **Set GitHub Secrets**
+
+In your repository settings, add:
+- `GCP_PROJECT_ID`
+- `GCP_SERVICE_ACCOUNT_KEY` (base64 encoded)
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+- `SNYK_TOKEN` (optional for security scanning)
+- `SLACK_WEBHOOK` (optional for notifications)
+
+2. **Push to trigger deployment**
 ```bash
-# Build Docker image
-npm run docker:build
-
-# Deploy to Cloud Run
-npm run gcloud:deploy
+git push origin main
 ```
 
-Or use GitHub Actions for automated deployment on push to main branch.
+The pipeline will:
+- Run tests and linting
+- Build and deploy backend to Cloud Run
+- Deploy frontend to Vercel
+- Run E2E tests against production
+- Rollback on failure
 
-## Project Structure
+## Testing
+
+### Run all tests
+```bash
+npm test
+```
+
+### Backend unit tests with coverage
+```bash
+npm run test:backend -- --coverage
+```
+
+### Frontend tests
+```bash
+npm run test:frontend
+```
+
+### E2E tests
+```bash
+npm run test:e2e
+```
+
+### E2E tests against production
+```bash
+PLAYWRIGHT_BASE_URL=https://verbio.app npm run test:e2e:prod
+```
+
+## Architecture
 
 ```
-verbio-app/
-├── backend/                 # Backend Node.js application
-│   ├── src/
-│   │   ├── config/         # Configuration files
-│   │   ├── middleware/     # Express middleware
-│   │   ├── routes/         # API routes
-│   │   ├── services/       # Business logic
-│   │   ├── types/          # TypeScript types
-│   │   ├── utils/          # Utility functions
-│   │   └── index.ts        # Main server file
-│   ├── tests/              # Backend tests
-│   ├── Dockerfile          # Docker configuration
-│   └── package.json        # Backend dependencies
-├── frontend/               # Frontend React application
-│   ├── src/
-│   │   ├── components/     # React components
-│   │   ├── pages/          # Page components
-│   │   ├── hooks/          # Custom hooks
-│   │   ├── services/       # API services
-│   │   ├── types/          # TypeScript types
-│   │   ├── utils/          # Utility functions
-│   │   └── main.tsx        # Entry point
-│   ├── public/             # Static assets
-│   ├── index.html          # HTML template
-│   ├── vite.config.ts      # Vite configuration
-│   └── package.json        # Frontend dependencies
-├── shared/                 # Shared code between frontend/backend
-├── .github/                # GitHub Actions workflows
-├── .husky/                 # Git hooks
-├── .env.example            # Environment variables template
-├── .eslintrc.js            # ESLint configuration
-├── .prettierrc             # Prettier configuration
-├── tsconfig.json           # Root TypeScript config
-├── vercel.json             # Vercel configuration
-├── cloudbuild.yaml         # Google Cloud Build config
-└── package.json            # Root package.json
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Twilio    │────▶│   Backend   │────▶│   OpenAI    │
+│   Phone     │     │   (Cloud    │     │  Realtime   │
+└─────────────┘     │    Run)     │     └─────────────┘
+                    │             │
+                    │             │     ┌─────────────┐
+                    │             │────▶│   Stripe    │
+                    │             │     │   Payments  │
+                    └─────────────┘     └─────────────┘
+                           │
+                           │
+                    ┌─────────────┐     ┌─────────────┐
+                    │  Supabase   │────▶│   Frontend  │
+                    │  Database   │     │   (Vercel)  │
+                    └─────────────┘     └─────────────┘
 ```
+
+## Security Features
+
+- **Authentication**: JWT with 24-hour expiry
+- **Database**: Row Level Security (RLS) policies
+- **Input Sanitization**: XSS and SQL injection protection
+- **Rate Limiting**: IP-based with exponential backoff
+- **HTTPS**: Automatic redirect in production
+- **CSRF Protection**: Token-based for state-changing operations
+- **Secrets Management**: Google Secret Manager integration
+- **WebSocket Security**: Origin validation and auth checks
+- **Idempotency**: Request deduplication for payments
+
+## Monitoring
+
+- **Sentry**: Error tracking and performance monitoring
+- **Cloud Logging**: Structured logs with trace IDs
+- **Health Checks**: `/healthz` endpoint for uptime monitoring
+- **Metrics**: Custom business metrics dashboard
 
 ## API Documentation
 
 ### Authentication
-- `POST /api/auth/register` - Register new business
-- `POST /api/auth/login` - Login with email/password
-- `POST /api/auth/logout` - Logout user
-- `GET /api/auth/profile` - Get current user profile
+```
+POST /api/auth/login
+POST /api/auth/register
+POST /api/auth/logout
+GET  /api/auth/profile
+```
 
 ### Business Management
-- `GET /api/business/:id` - Get business details
-- `PUT /api/business/:id` - Update business info
-- `POST /api/business/:id/data` - Upload business data (menu, hours, etc.)
+```
+GET    /api/business
+PUT    /api/business
+POST   /api/business/data
+POST   /api/business/phone
+GET    /api/business/agents
+POST   /api/business/agents
+PUT    /api/business/agents/:id
+DELETE /api/business/agents/:id
+```
 
-### Agent Configuration
-- `GET /api/agents` - List all agents for business
-- `POST /api/agents` - Create new agent
-- `PUT /api/agents/:id` - Update agent configuration
-- `DELETE /api/agents/:id` - Delete agent
+### Orders
+```
+GET  /api/orders
+GET  /api/orders/:id
+PUT  /api/orders/:id/status
+```
 
-### Phone Management
-- `GET /api/phones` - List connected phone numbers
-- `POST /api/phones/connect` - Connect Twilio phone number
-- `DELETE /api/phones/:id` - Disconnect phone number
+### Webhooks
+```
+POST /api/twilio/webhook
+POST /api/stripe/webhook
+```
 
-### Orders & Payments
-- `GET /api/orders` - List all orders
-- `GET /api/orders/:id` - Get order details
-- `PUT /api/orders/:id/status` - Update order status
-- `GET /api/payments` - List all payments
-- `POST /api/payments/refund` - Process refund
+### WebSocket
+```
+WS /realtime?businessId=XXX&from=+1XXX&agentType=service
+```
 
-### Voice Webhooks
-- `POST /api/voice/webhook` - Twilio webhook endpoint
-- `WS /api/realtime` - WebSocket for real-time audio streaming
+## Contributing
 
-### Health Check
-- `GET /api/healthz` - Health check endpoint
-
-## Security Best Practices
-
-1. **Authentication**: JWT tokens with 24h expiry, httpOnly cookies
-2. **Authorization**: Supabase RLS policies enforce row-level security
-3. **Input Validation**: Joi schemas validate all API inputs
-4. **Rate Limiting**: 100 requests per 15 minutes per IP
-5. **CORS**: Configured for frontend domain only
-6. **CSRF Protection**: Enabled for state-changing operations
-7. **Secrets Management**: All secrets in environment variables
-8. **HTTPS**: Enforced in production
-9. **WebSocket Security**: Origin validation for Twilio connections
-10. **Payment Security**: PCI compliance via Stripe, no card data stored
-
-## Performance Optimizations
-
-1. **Audio Latency**: <50ms buffering for real-time voice
-2. **Database**: Connection pooling, indexed queries
-3. **Caching**: Redis for session management (optional)
-4. **CDN**: Static assets served via Vercel Edge Network
-5. **Code Splitting**: Lazy loading for React components
-6. **Compression**: Gzip enabled for API responses
-7. **Concurrency**: Cloud Run configured for 80 concurrent requests
-8. **Memory**: 1Gi allocated for audio processing
-
-## Monitoring & Logging
-
-- **Winston**: Structured JSON logging
-- **Sentry**: Error tracking and performance monitoring
-- **Cloud Logging**: Google Cloud logs for production
-- **Metrics**: Custom metrics for call duration, function calls
-
-## Support
-
-For issues, questions, or contributions, please open an issue on GitHub or contact support@verbio.app.
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ## License
 
-MIT License - See LICENSE file for details
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Support
+
+For support, email support@verbio.app or open an issue in the GitHub repository.
+
+## Acknowledgments
+
+- OpenAI for the Realtime API
+- Twilio for telephony infrastructure
+- Supabase for database and realtime subscriptions
+- Vercel for frontend hosting
+- Google Cloud for backend infrastructure

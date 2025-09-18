@@ -1,0 +1,108 @@
+steps:
+  # Install dependencies
+  - name: 'node:20-alpine'
+    entrypoint: 'npm'
+    args: ['ci']
+    id: 'install-deps'
+
+  # Run tests
+  - name: 'node:20-alpine'
+    entrypoint: 'npm'
+    args: ['run', 'test:backend']
+    id: 'run-tests'
+    waitFor: ['install-deps']
+
+  # Run lint
+  - name: 'node:20-alpine'
+    entrypoint: 'npm'
+    args: ['run', 'lint:backend']
+    id: 'run-lint'
+    waitFor: ['install-deps']
+
+  # Build backend
+  - name: 'node:20-alpine'
+    entrypoint: 'npm'
+    args: ['run', 'build:backend']
+    id: 'build-backend'
+    waitFor: ['run-tests', 'run-lint']
+
+  # Build Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/verbio-backend:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/verbio-backend:latest'
+      - '--cache-from'
+      - 'gcr.io/$PROJECT_ID/verbio-backend:latest'
+      - '.'
+    id: 'build-image'
+    waitFor: ['build-backend']
+
+  # Push Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - '--all-tags'
+      - 'gcr.io/$PROJECT_ID/verbio-backend'
+    id: 'push-image'
+    waitFor: ['build-image']
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'verbio-backend'
+      - '--image=gcr.io/$PROJECT_ID/verbio-backend:$COMMIT_SHA'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--memory=1Gi'
+      - '--cpu=1'
+      - '--concurrency=80'
+      - '--max-instances=100'
+      - '--min-instances=1'
+      - '--port=8080'
+      - '--timeout=300'
+      - '--service-account=verbio-backend@$PROJECT_ID.iam.gserviceaccount.com'
+      - '--set-env-vars=NODE_ENV=production,BACKEND_URL=https://api.verbio.app,FRONTEND_URL=https://verbio.app,PORT=8080'
+      - '--set-secrets=TWILIO_ACCOUNT_SID=twilio-account-sid:latest,TWILIO_AUTH_TOKEN=twilio-auth-token:latest,OPENAI_API_KEY=openai-api-key:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,SUPABASE_URL=supabase-url:latest,SUPABASE_SERVICE_KEY=supabase-service-key:latest,JWT_SECRET=jwt-secret:latest,COOKIE_SECRET=cookie-secret:latest,CSRF_SECRET=csrf-secret:latest,SESSION_SECRET=session-secret:latest,SENTRY_DSN=sentry-dsn:latest'
+      - '--update-labels=version=$COMMIT_SHA,environment=production,service=backend'
+    id: 'deploy-cloud-run'
+    waitFor: ['push-image']
+
+  # Update traffic to new revision
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'services'
+      - 'update-traffic'
+      - 'verbio-backend'
+      - '--to-latest'
+      - '--region=us-central1'
+      - '--platform=managed'
+    id: 'update-traffic'
+    waitFor: ['deploy-cloud-run']
+
+  # Verify deployment
+  - name: 'gcr.io/cloud-builders/curl'
+    args:
+      - '-f'
+      - 'https://api.verbio.app/healthz'
+    id: 'verify-deployment'
+    waitFor: ['update-traffic']
+
+images:
+  - 'gcr.io/$PROJECT_ID/verbio-backend:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/verbio-backend:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  substitutionOption: 'ALLOW_LOOSE'
+
+timeout: '1200s'

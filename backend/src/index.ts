@@ -11,10 +11,13 @@ import compression from 'compression';
 import * as Sentry from '@sentry/node';
 import { logger } from './utils/logger';
 import { errorHandler, CustomError } from './utils/errorHandler';
+import { httpsRedirect, idempotencyMiddleware, securityHeaders, requestLogging } from './middleware/security';
+import { sanitizationMiddleware } from './middleware/sanitization';
 import authRoutes from './routes/auth';
 import businessRoutes from './routes/business';
 import ordersRoutes from './routes/orders';
 import twilioRoutes from './routes/twilio';
+import { stripeRoutes } from './routes/stripe';
 import { handleConnection } from './socket/realtimeHandler';
 
 dotenv.config();
@@ -64,6 +67,13 @@ if (SENTRY_DSN && NODE_ENV === 'production') {
   app.use(Sentry.Handlers.tracingHandler());
 }
 
+// Security middleware
+app.use(httpsRedirect);
+app.use(securityHeaders);
+app.use(requestLogging);
+app.use(idempotencyMiddleware);
+app.use(sanitizationMiddleware);
+
 app.use(compression());
 app.use(
   cors({
@@ -78,7 +88,14 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  verify: (req: any, res, buf) => {
+    if (req.originalUrl === '/api/stripe/webhook') {
+      req.rawBody = buf;
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(cookieParser(process.env.COOKIE_SECRET || 'verbio-cookie-secret'));
 app.use('/api', limiter);
@@ -111,10 +128,13 @@ app.get('/', (_req: Request, res: Response) => {
   });
 });
 
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
+
 app.use('/api/auth', authRoutes);
 app.use('/api/business', businessRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/twilio', twilioRoutes);
+app.use('/api/stripe', stripeRoutes);
 
 server.on('upgrade', (request, socket, head) => {
   const pathname = new URL(request.url!, `http://${request.headers.host}`).pathname;
