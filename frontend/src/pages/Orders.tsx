@@ -18,21 +18,19 @@ import {
   MagnifyingGlassIcon,
   ArrowPathIcon,
   CheckCircleIcon,
-  XCircleIcon,
   ClockIcon,
   CurrencyDollarIcon,
   PhoneIcon,
   ChevronUpIcon,
   ChevronDownIcon,
-  ExternalLinkIcon,
+  ArrowTopRightOnSquareIcon,
   ArrowsUpDownIcon,
 } from '@heroicons/react/24/outline';
 import api from '../services/api';
-import { supabase, Database } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { useAuthStore } from '../store/authStore';
-
-type Order = Database['public']['Tables']['orders']['Row'];
+import type { Order } from '../types';
 
 const fuzzyFilter: FilterFn<any> = (row, columnId, value, addMeta) => {
   const itemRank = rankItem(row.getValue(columnId), value);
@@ -167,11 +165,12 @@ const Orders: React.FC = () => {
     }
   };
 
-  const statusColors = {
+  const statusColors: Record<string, string> = {
     pending: 'bg-yellow-100 text-yellow-800',
     confirmed: 'bg-blue-100 text-blue-800',
     preparing: 'bg-orange-100 text-orange-800',
     ready: 'bg-green-100 text-green-800',
+    completed: 'bg-emerald-100 text-emerald-800',
     delivered: 'bg-emerald-100 text-emerald-800',
     cancelled: 'bg-red-100 text-red-800',
   };
@@ -292,7 +291,7 @@ const Orders: React.FC = () => {
             <option value="confirmed">Confirmed</option>
             <option value="preparing">Preparing</option>
             <option value="ready">Ready</option>
-            <option value="delivered">Delivered</option>
+            <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
         ),
@@ -330,7 +329,7 @@ const Orders: React.FC = () => {
               className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
             >
               Stripe
-              <ExternalLinkIcon className="h-3 w-3" />
+              <ArrowTopRightOnSquareIcon className="h-3 w-3" />
             </a>
           </div>
         ),

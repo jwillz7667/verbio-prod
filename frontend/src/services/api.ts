@@ -1,11 +1,12 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
 import toast from 'react-hot-toast';
+import type { User, Business, Agent, Order, Payment, CallLog } from '../types';
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
 
 class ApiClient {
   private client: AxiosInstance;
-  private refreshPromise: Promise<any> | null = null;
+  private refreshPromise: Promise<void> | null = null;
 
   constructor() {
     this.client = axios.create({
@@ -115,7 +116,7 @@ class ApiClient {
     }
   }
 
-  async login(email: string, password: string): Promise<any> {
+  async login(email: string, password: string): Promise<{ user: User; token: string }> {
     const response = await this.client.post('/api/auth/login', { email, password });
     const { token, user } = response.data;
 
@@ -129,7 +130,7 @@ class ApiClient {
     return response.data;
   }
 
-  async register(email: string, password: string, businessName: string): Promise<any> {
+  async register(email: string, password: string, businessName: string): Promise<{ user: User; token: string }> {
     const response = await this.client.post('/api/auth/register', {
       email,
       password,
@@ -158,27 +159,27 @@ class ApiClient {
     }
   }
 
-  async getProfile(): Promise<any> {
+  async getProfile(): Promise<{ user: User }> {
     const response = await this.client.get('/api/auth/profile');
     return response.data;
   }
 
-  async updateProfile(data: any): Promise<any> {
+  async updateProfile(data: Partial<User>): Promise<{ user: User }> {
     const response = await this.client.put('/api/auth/profile', data);
     return response.data;
   }
 
-  async getBusiness(): Promise<any> {
+  async getBusiness(): Promise<{ business: Business }> {
     const response = await this.client.get('/api/business');
     return response.data;
   }
 
-  async updateBusiness(data: any): Promise<any> {
+  async updateBusiness(data: Partial<Business>): Promise<{ business: Business }> {
     const response = await this.client.put('/api/business', data);
     return response.data;
   }
 
-  async uploadBusinessData(data: any): Promise<any> {
+  async uploadBusinessData(data: Record<string, unknown>): Promise<{ success: boolean }> {
     const response = await this.client.post('/api/business/data', data);
     return response.data;
   }
@@ -188,17 +189,17 @@ class ApiClient {
     return response.data;
   }
 
-  async getAgents(): Promise<any> {
+  async getAgents(): Promise<{ agents: Agent[] }> {
     const response = await this.client.get('/api/business/agents');
     return response.data;
   }
 
-  async createAgent(data: any): Promise<any> {
+  async createAgent(data: Partial<Agent>): Promise<{ agent: Agent }> {
     const response = await this.client.post('/api/business/agents', data);
     return response.data;
   }
 
-  async updateAgent(agentId: string, data: any): Promise<any> {
+  async updateAgent(agentId: string, data: Partial<Agent>): Promise<{ agent: Agent }> {
     const response = await this.client.put(`/api/business/agents/${agentId}`, data);
     return response.data;
   }
@@ -208,7 +209,7 @@ class ApiClient {
     return response.data;
   }
 
-  async getOrders(params?: any): Promise<any> {
+  async getOrders(params?: Record<string, unknown>): Promise<{ orders: Order[] }> {
     const response = await this.client.get('/api/orders', { params });
     return response.data;
   }
@@ -218,12 +219,12 @@ class ApiClient {
     return response.data;
   }
 
-  async updateOrderStatus(orderId: string, status: string): Promise<any> {
+  async updateOrderStatus(orderId: string, status: string): Promise<{ order: Order }> {
     const response = await this.client.put(`/api/orders/${orderId}/status`, { status });
     return response.data;
   }
 
-  async getCallLogs(params?: any): Promise<any> {
+  async getCallLogs(params?: Record<string, unknown>): Promise<{ callLogs: CallLog[] }> {
     const response = await this.client.get('/api/business/calls', { params });
     return response.data;
   }
@@ -233,12 +234,12 @@ class ApiClient {
     return response.data;
   }
 
-  async getAnalytics(params?: any): Promise<any> {
+  async getAnalytics(params?: Record<string, unknown>): Promise<Record<string, unknown>> {
     const response = await this.client.get('/api/business/analytics', { params });
     return response.data;
   }
 
-  async getPayments(params?: any): Promise<any> {
+  async getPayments(params?: Record<string, unknown>): Promise<{ payments: Payment[] }> {
     const response = await this.client.get('/api/business/payments', { params });
     return response.data;
   }

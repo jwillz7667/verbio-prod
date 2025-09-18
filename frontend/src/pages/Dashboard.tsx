@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-// import ReactJson from 'react-json-view'; // Removed for build compatibility
 import toast from 'react-hot-toast';
 import {
   PlusIcon,
@@ -15,42 +14,24 @@ import {
 } from '@heroicons/react/24/outline';
 import api from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
-
-interface Agent {
-  id: string;
-  name: string;
-  type: 'service' | 'order' | 'payment';
-  prompt: string;
-  voice_config: {
-    voice: string;
-    eagerness?: string;
-    noise_reduction?: string;
-  };
-  is_active: boolean;
-  created_at?: string;
-}
-
-interface Business {
-  id: string;
-  name: string;
-  phone_number?: string;
-  data_json?: any;
-  agents?: Agent[];
-  created_at?: string;
-  updated_at?: string;
-}
+import type { Agent, AgentType, Business, BusinessData } from '../types';
 
 const Dashboard: React.FC = () => {
   const [business, setBusiness] = useState<Business | null>(null);
-  const [dataJson, setDataJson] = useState<any>({});
+  const [dataJson, setDataJson] = useState<BusinessData>({});
   const [agents, setAgents] = useState<Agent[]>([]);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
-  const [newAgent, setNewAgent] = useState({
+  const [newAgent, setNewAgent] = useState<{
+    name: string;
+    type: AgentType;
+    prompt: string;
+    voice: string;
+  }>({
     name: '',
-    type: 'service' as const,
+    type: 'service',
     prompt: '',
     voice: 'cedar',
   });
@@ -62,7 +43,7 @@ const Dashboard: React.FC = () => {
   const fetchBusinessData = async () => {
     try {
       setIsLoading(true);
-      const [profileRes, businessRes, agentsRes] = await Promise.all([
+      const [, businessRes, agentsRes] = await Promise.all([
         api.getProfile(),
         api.getBusiness().catch(() => null),
         api.getAgents().catch(() => ({ agents: [] })),
@@ -158,7 +139,7 @@ const Dashboard: React.FC = () => {
 
     try {
       await api.createAgent({
-        businessId: business.id,
+        business_id: business.id,
         name: newAgent.name,
         type: newAgent.type,
         prompt: newAgent.prompt,
@@ -278,7 +259,7 @@ const Dashboard: React.FC = () => {
                 type="tel"
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleAddPhone()}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddPhone()}
                 placeholder="+1234567890"
                 className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent"
               />
@@ -462,7 +443,7 @@ const Dashboard: React.FC = () => {
                 onChange={(e) =>
                   setNewAgent({
                     ...newAgent,
-                    type: e.target.value as 'service' | 'order' | 'payment',
+                    type: e.target.value as AgentType,
                   })
                 }
                 className="px-3 py-2 border border-gray-300 rounded-lg"
