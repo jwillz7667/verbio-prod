@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import ReactJson from 'react-json-view';
+// import ReactJson from 'react-json-view'; // Removed for build compatibility
 import toast from 'react-hot-toast';
 import {
   PlusIcon,
@@ -252,27 +252,9 @@ const Dashboard: React.FC = () => {
           </div>
 
           <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 max-h-96 overflow-auto">
-            <ReactJson
-              src={dataJson}
-              theme="rjv-default"
-              iconStyle="circle"
-              enableClipboard={true}
-              displayDataTypes={false}
-              displayObjectSize={false}
-              name={false}
-              onEdit={(edit) => {
-                setDataJson(edit.updated_src);
-                return true;
-              }}
-              onAdd={(add) => {
-                setDataJson(add.updated_src);
-                return true;
-              }}
-              onDelete={(del) => {
-                setDataJson(del.updated_src);
-                return true;
-              }}
-            />
+            <pre className="text-sm font-mono">
+              <code>{JSON.stringify(dataJson, null, 2)}</code>
+            </pre>
           </div>
 
           <div className="mt-4 p-3 bg-blue-50 rounded-lg">
