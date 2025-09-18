@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "https://verbio-backend-xxx.run.app/api/:path*"
+      "destination": "https://verbio-backend-995705962018.us-central1.run.app/api/:path*"
     }
   ],
   "headers": [
