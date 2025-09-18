@@ -1,13 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import {
   LineChart,
   Line,
-  AreaChart,
-  Area,
-  BarChart,
-  Bar,
   PieChart,
   Pie,
   Cell,
@@ -23,22 +19,13 @@ import {
   CreditCard,
   Activity,
   TrendingUp,
-  Users,
   DollarSign,
-  Clock,
   CheckCircle,
-  AlertCircle,
   Bot,
-  Zap,
   PhoneCall,
-  PhoneMissed,
-  PhoneOff,
   ChevronRight,
 } from 'lucide-react';
 import MetricCard from '../components/dashboard/MetricCard';
-import api from '../services/api';
-import LoadingSpinner from '../components/LoadingSpinner';
-import toast from 'react-hot-toast';
 import clsx from 'clsx';
 
 const Dashboard: React.FC = () => {
@@ -134,7 +121,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Active Sessions Alert */}
-      {metrics?.activeSessions > 0 && (
+      {metrics?.activeSessions && metrics.activeSessions > 0 && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
