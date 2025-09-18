@@ -1,6 +1,7 @@
-import { WebSocket } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import { IncomingMessage } from 'http';
 import { parse } from 'url';
+import { config } from '../config/env';
 import { RealtimeSession } from '../services/openaiService';
 import { supabaseAdmin } from '../config/supabase';
 import { logger } from '../utils/logger';
@@ -17,6 +18,7 @@ interface AgentConfig {
   name: string;
   type: 'service' | 'order' | 'payment';
   prompt: string;
+  is_active: boolean;
   voice_config: {
     voice?: string;
     language?: string;
@@ -35,9 +37,9 @@ export async function handleConnection(ws: WebSocket, req: IncomingMessage): Pro
   try {
     const url = parse(req.url || '', true);
     const params: ConnectionParams = {
-      businessId: url.query.businessId as string,
-      agentType: url.query.agentType as string,
-      from: url.query.from as string,
+      businessId: url.query['businessId'] as string,
+      agentType: url.query['agentType'] as string,
+      from: url.query['from'] as string,
     };
 
     logger.info('WebSocket connection established', {
@@ -106,7 +108,7 @@ Please assist customers with their inquiries professionally and accurately.`;
     const vadEagerness = voiceConfig.eagerness || 'medium';
     const noiseReduction = voiceConfig.noise_reduction || 'auto';
 
-    const openaiApiKey = process.env.OPENAI_API_KEY;
+    const openaiApiKey = config.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
       logger.error('OpenAI API key not configured');
       ws.send(JSON.stringify({ error: 'OpenAI API key not configured' }));
@@ -125,7 +127,7 @@ Please assist customers with their inquiries professionally and accurately.`;
       noiseReduction: noiseReduction as any,
       temperature: 0.8,
       maxOutputTokens: 4096,
-      mcpServerUrl: process.env.MCP_SERVER_URL,
+      mcpServerUrl: config.get('MCP_SERVER_URL') || undefined,
     });
 
     session.on('audio_data', (data: any) => {
@@ -268,8 +270,8 @@ async function logConnectionToDatabase(
   }
 }
 
-export function createRealtimeWebSocketServer(): WebSocket.Server {
-  const wss = new WebSocket.Server({ noServer: true });
+export function createRealtimeWebSocketServer(): WebSocketServer {
+  const wss = new WebSocketServer({ noServer: true });
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
     handleConnection(ws, req);

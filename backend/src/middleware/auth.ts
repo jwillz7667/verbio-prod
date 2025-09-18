@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { config } from '../config/env';
 import { supabasePublic, supabaseAdmin } from '../config/supabase';
 import { AuthenticationError, CustomError } from '../utils/errorHandler';
 import { logger } from '../utils/logger';
@@ -10,8 +11,8 @@ export interface AuthRequest extends Request {
   token?: string;
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'default-jwt-secret';
-const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
+const JWT_SECRET = config.get('JWT_SECRET');
+const JWT_EXPIRY = config.get('JWT_EXPIRY');
 
 export const extractToken = (req: AuthRequest): string | null => {
   const authHeader = req.headers.authorization;
@@ -19,12 +20,12 @@ export const extractToken = (req: AuthRequest): string | null => {
     return authHeader.substring(7);
   }
 
-  if (req.cookies && req.cookies.token) {
-    return req.cookies.token;
+  if (req.cookies && req.cookies['token']) {
+    return req.cookies['token'];
   }
 
-  if (req.query && req.query.token && typeof req.query.token === 'string') {
-    return req.query.token;
+  if (req.query && req.query['token'] && typeof req.query['token'] === 'string') {
+    return req.query['token'];
   }
 
   return null;
@@ -47,10 +48,10 @@ export const verifyToken = (token: string): IJWTPayload => {
 
 export const generateToken = (payload: Omit<IJWTPayload, 'iat' | 'exp'>): string => {
   return jwt.sign(payload, JWT_SECRET, {
-    expiresIn: JWT_EXPIRY,
+    expiresIn: JWT_EXPIRY as string | number,
     issuer: 'verbio-backend',
     audience: 'verbio-app',
-  });
+  } as jwt.SignOptions);
 };
 
 export const authenticate = async (
@@ -142,7 +143,7 @@ export const requireBusinessAccess = async (
       throw new AuthenticationError('Authentication required');
     }
 
-    const businessId = req.params.businessId || req.body.businessId || req.query.businessId;
+    const businessId = req.params['businessId'] || req.body['businessId'] || req.query['businessId'];
 
     if (!businessId) {
       return next();
@@ -193,7 +194,7 @@ export const refreshToken = async (
 
     res.cookie('token', newToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: config.isProduction(),
       sameSite: 'strict',
       maxAge: 24 * 60 * 60 * 1000,
       path: '/',
@@ -213,7 +214,7 @@ export const refreshToken = async (
 export const clearAuthCookie = (res: Response): void => {
   res.clearCookie('token', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: config.isProduction(),
     sameSite: 'strict',
     path: '/',
   });
@@ -222,7 +223,7 @@ export const clearAuthCookie = (res: Response): void => {
 export const setAuthCookie = (res: Response, token: string): void => {
   res.cookie('token', token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: config.isProduction(),
     sameSite: 'strict',
     maxAge: 24 * 60 * 60 * 1000,
     path: '/',

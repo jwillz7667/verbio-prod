@@ -1,5 +1,4 @@
-import dotenv from 'dotenv';
-import express, { Application, Request, Response, NextFunction } from 'express';
+import express, { Application, Request, Response } from 'express';
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import cors from 'cors';
@@ -9,8 +8,9 @@ import rateLimit from 'express-rate-limit';
 import cookieParser from 'cookie-parser';
 import compression from 'compression';
 import * as Sentry from '@sentry/node';
+import { config } from './config/env';
 import { logger } from './utils/logger';
-import { errorHandler, CustomError } from './utils/errorHandler';
+import { errorHandler } from './utils/errorHandler';
 import { httpsRedirect, idempotencyMiddleware, securityHeaders, requestLogging } from './middleware/security';
 import { sanitizationMiddleware } from './middleware/sanitization';
 import authRoutes from './routes/auth';
@@ -20,20 +20,20 @@ import twilioRoutes from './routes/twilio';
 import { stripeRoutes } from './routes/stripe';
 import { handleConnection } from './socket/realtimeHandler';
 
-dotenv.config();
+const PORT = config.get('PORT');
+const FRONTEND_URL = config.get('FRONTEND_URL');
+const NODE_ENV = config.get('NODE_ENV');
+const SENTRY_DSN = config.get('SENTRY_DSN');
 
-const PORT = process.env.PORT || 8080;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://verbio.app';
-const NODE_ENV = process.env.NODE_ENV || 'development';
-const SENTRY_DSN = process.env.SENTRY_DSN;
+const app: Application = express();
 
 if (SENTRY_DSN && NODE_ENV === 'production') {
   Sentry.init({
     dsn: SENTRY_DSN,
     environment: NODE_ENV,
     integrations: [
-      new Sentry.Integrations.Http({ tracing: true }),
-      new Sentry.Integrations.Express({ app: express() }),
+      Sentry.httpIntegration(),
+      Sentry.expressIntegration(),
     ],
     tracesSampleRate: NODE_ENV === 'production' ? 0.1 : 1.0,
     beforeSend(event, hint) {
@@ -44,8 +44,6 @@ if (SENTRY_DSN && NODE_ENV === 'production') {
     },
   });
 }
-
-const app: Application = express();
 const server = http.createServer(app);
 
 const wss = new WebSocketServer({ noServer: true });
@@ -63,8 +61,7 @@ const limiter = rateLimit({
 });
 
 if (SENTRY_DSN && NODE_ENV === 'production') {
-  app.use(Sentry.Handlers.requestHandler());
-  app.use(Sentry.Handlers.tracingHandler());
+  Sentry.setupExpressErrorHandler(app);
 }
 
 // Security middleware
@@ -90,23 +87,23 @@ app.use(helmet({
 app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
 app.use(express.json({
   limit: '10mb',
-  verify: (req: any, res, buf) => {
+  verify: (req: any, _res, buf) => {
     if (req.originalUrl === '/api/stripe/webhook') {
       req.rawBody = buf;
     }
   }
 }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(cookieParser(process.env.COOKIE_SECRET || 'verbio-cookie-secret'));
+app.use(cookieParser(config.get('COOKIE_SECRET') || 'verbio-cookie-secret'));
 app.use('/api', limiter);
 
-if (NODE_ENV === 'production' && process.env.ENABLE_CSRF_PROTECTION === 'true') {
+if (NODE_ENV === 'production' && config.get('ENABLE_CSRF_PROTECTION')) {
   const csurf = require('csurf');
   const csrfProtection = csurf({ cookie: { httpOnly: true, secure: true, sameSite: 'strict' } });
   app.use('/api', csrfProtection);
 
   app.get('/api/csrf-token', (req: Request, res: Response) => {
-    res.json({ csrfToken: req.csrfToken?.() });
+    res.json({ csrfToken: (req as any).csrfToken?.() });
   });
 }
 
@@ -116,7 +113,7 @@ app.get('/healthz', (_req: Request, res: Response) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     environment: NODE_ENV,
-    version: process.env.npm_package_version || '1.0.0',
+    version: '1.0.0',
   });
 });
 
@@ -169,9 +166,7 @@ server.on('upgrade', (request, socket, head) => {
   }
 });
 
-if (SENTRY_DSN && NODE_ENV === 'production') {
-  app.use(Sentry.Handlers.errorHandler());
-}
+// Error handler is already setup with setupExpressErrorHandler
 
 app.use(errorHandler);
 
@@ -206,7 +201,7 @@ const gracefulShutdown = async (signal: string) => {
       });
     });
 
-    if (Sentry.getCurrentHub) {
+    if (Sentry.close) {
       await Sentry.close(2000);
     }
 

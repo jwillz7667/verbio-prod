@@ -1,4 +1,4 @@
-import { VoiceResponse as TwilioVoiceResponse } from 'twilio/lib/twiml/VoiceResponse';
+import TwilioVoiceResponse = require('twilio/lib/twiml/VoiceResponse');
 
 export interface TwilioWebhookRequest {
   CallSid: string;

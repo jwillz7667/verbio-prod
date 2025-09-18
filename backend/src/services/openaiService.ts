@@ -456,7 +456,7 @@ export class RealtimeSession extends EventEmitter {
       const charge = await stripeService.createCharge(amountCents, {
         businessId: this.config.businessId,
         orderId,
-        customerPhone: this.config.customerPhone,
+        phoneNumber: this.config.customerPhone,
         description: `Payment for order ${orderId}`,
         agentId: this.sessionId,
       });

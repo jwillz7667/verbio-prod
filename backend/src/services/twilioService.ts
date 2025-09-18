@@ -1,5 +1,6 @@
 import twilio from 'twilio';
 import { Request, Response } from 'express';
+import { config } from '../config/env';
 import { VoiceResponse } from '../types/twilio';
 import { supabaseAdmin } from '../config/supabase';
 import { logger } from '../utils/logger';
@@ -10,8 +11,8 @@ import type {
   PhoneMappingConfig
 } from '../types/twilio';
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
+const accountSid = config.get('TWILIO_ACCOUNT_SID');
+const authToken = config.get('TWILIO_AUTH_TOKEN');
 
 if (!accountSid || !authToken) {
   logger.warn('Twilio credentials not configured');
@@ -26,16 +27,16 @@ export const generateTwiML = async (
 ): Promise<string> => {
   const twiml = new VoiceResponse();
 
-  const backendUrl = process.env.BACKEND_URL || 'https://api.verbio.app';
+  const backendUrl = config.get('BACKEND_URL') || 'https://api.verbio.app';
 
   const sayOptions = {
     voice: 'Polly.Joanna' as any,
     language: 'en-US'
   };
 
-  twiml.say(sayOptions, 'Welcome to our business. Connecting you to an agent now.');
+  (twiml as any).say(sayOptions, 'Welcome to our business. Connecting you to an agent now.');
 
-  const connect = twiml.connect();
+  const connect = (twiml as any).connect();
   const stream = connect.stream({
     url: `${backendUrl}/realtime`,
     track: 'both_tracks'
@@ -102,8 +103,8 @@ export const handleWebhook = async (req: Request, res: Response): Promise<void> 
       logger.warn('Phone number not mapped', { to: To });
 
       const twiml = new VoiceResponse();
-      twiml.say({ voice: 'Polly.Joanna' as any }, 'This number is not currently in service. Please check the number and try again.');
-      twiml.hangup();
+      (twiml as any).say({ voice: 'Polly.Joanna' as any }, 'This number is not currently in service. Please check the number and try again.');
+      (twiml as any).hangup();
 
       res.type('text/xml');
       res.send(twiml.toString());
@@ -126,7 +127,7 @@ export const handleWebhook = async (req: Request, res: Response): Promise<void> 
       logger.error('Failed to create call log', { error: logError });
     }
 
-    const agentType = phoneMapping.agents?.type || 'service';
+    const agentType = (phoneMapping.agents as any)?.type || 'service';
     const twimlResponse = await generateTwiML(From, phoneMapping.business_id, agentType);
 
     logger.info('TwiML response generated', {
@@ -141,8 +142,8 @@ export const handleWebhook = async (req: Request, res: Response): Promise<void> 
     logger.error('Error handling Twilio webhook', { error });
 
     const twiml = new VoiceResponse();
-    twiml.say({ voice: 'Polly.Joanna' as any }, 'We are experiencing technical difficulties. Please try again later.');
-    twiml.hangup();
+    (twiml as any).say({ voice: 'Polly.Joanna' as any }, 'We are experiencing technical difficulties. Please try again later.');
+    (twiml as any).hangup();
 
     res.type('text/xml');
     res.send(twiml.toString());

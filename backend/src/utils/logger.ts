@@ -1,10 +1,11 @@
 import winston from 'winston';
 import path from 'path';
 import fs from 'fs';
+import { config } from '../config/env';
 
-const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
-const LOG_FORMAT = process.env.LOG_FORMAT || 'json';
-const NODE_ENV = process.env.NODE_ENV || 'development';
+const LOG_LEVEL = config.get('LOG_LEVEL');
+const LOG_FORMAT = config.get('LOG_FORMAT');
+const NODE_ENV = config.get('NODE_ENV');
 
 const logsDir = path.join(process.cwd(), 'logs');
 if (!fs.existsSync(logsDir) && NODE_ENV !== 'production') {

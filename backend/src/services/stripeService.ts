@@ -1,11 +1,12 @@
 import Stripe from 'stripe';
 import { v4 as uuidv4 } from 'uuid';
+import { config } from '../config/env';
 import { supabaseAdmin } from '../config/supabase';
 import { logger } from '../utils/logger';
 import { AppError } from '../utils/errors';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2024-06-20',
+const stripe = new Stripe(config.get('STRIPE_SECRET_KEY'), {
+  apiVersion: '2023-10-16',
   typescript: true,
 });
 
@@ -22,7 +23,7 @@ export interface ChargeMetadata {
 export class StripeService {
   async createCharge(amountCents: number, metadata: ChargeMetadata): Promise<Stripe.Charge> {
     try {
-      if (!process.env.STRIPE_SECRET_KEY) {
+      if (!config.get('STRIPE_SECRET_KEY')) {
         throw new AppError('Stripe not configured', 500);
       }
 
@@ -367,7 +368,7 @@ export class StripeService {
     metadata: ChargeMetadata
   ): Promise<Stripe.PaymentIntent> {
     try {
-      if (!process.env.STRIPE_SECRET_KEY) {
+      if (!config.get('STRIPE_SECRET_KEY')) {
         throw new AppError('Stripe not configured', 500);
       }
 
