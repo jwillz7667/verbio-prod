@@ -1,3 +1,5 @@
+import { Request } from 'express';
+
 export interface IUser {
   id: string;
   email: string;
@@ -282,7 +284,7 @@ export interface IJWTPayload {
   exp?: number;
 }
 
-export interface IAuthRequest extends Express.Request {
+export interface IAuthRequest extends Request {
   user?: IJWTPayload;
   token?: string;
 }

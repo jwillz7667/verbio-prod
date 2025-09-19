@@ -37,7 +37,7 @@ const Dashboard: React.FC = () => {
     queryKey: ['dashboard-metrics'],
     queryFn: async () => {
       const response = await api.getDashboardMetrics();
-      return response.metrics;
+      return response.metrics || response;
     },
     refetchInterval: 30000, // Refetch every 30 seconds
   });
@@ -47,7 +47,7 @@ const Dashboard: React.FC = () => {
     queryKey: ['analytics-trends', selectedTimeRange],
     queryFn: async () => {
       const response = await api.getAnalyticsTrends(selectedTimeRange);
-      return response.trendData;
+      return response.trendData || response;
     },
   });
 
@@ -56,7 +56,7 @@ const Dashboard: React.FC = () => {
     queryKey: ['call-outcomes'],
     queryFn: async () => {
       const response = await api.getCallOutcomes();
-      return response.outcomes;
+      return response.outcomes || response;
     },
   });
 
@@ -65,7 +65,7 @@ const Dashboard: React.FC = () => {
     queryKey: ['recent-activities'],
     queryFn: async () => {
       const response = await api.getRecentActivity();
-      return response.activities;
+      return response.activities || response;
     },
     refetchInterval: 60000, // Refetch every minute
   });

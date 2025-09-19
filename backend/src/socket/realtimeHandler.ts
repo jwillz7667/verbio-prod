@@ -116,7 +116,7 @@ Please assist customers with their inquiries professionally and accurately.`;
       return;
     }
 
-    session = new RealtimeSession(openaiApiKey, {
+    const realtimeConfig: any = {
       instructions,
       voice: voice as any,
       businessId: params.businessId,
@@ -127,8 +127,14 @@ Please assist customers with their inquiries professionally and accurately.`;
       noiseReduction: noiseReduction as any,
       temperature: 0.8,
       maxOutputTokens: 4096,
-      mcpServerUrl: config.get('MCP_SERVER_URL') || undefined,
-    });
+    };
+
+    const mcpUrl = config.get('MCP_SERVER_URL');
+    if (mcpUrl) {
+      realtimeConfig.mcpServerUrl = mcpUrl;
+    }
+
+    session = new RealtimeSession(openaiApiKey, realtimeConfig);
 
     session.on('audio_data', (data: any) => {
       if (ws.readyState === WebSocket.OPEN) {

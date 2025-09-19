@@ -294,7 +294,7 @@ router.post('/refresh', authenticate, asyncHandler(async (req: AuthRequest, res:
 }));
 
 router.post('/oauth', asyncHandler(async (req: Request, res: Response) => {
-  const { email, id, name, provider } = req.body;
+  const { email, id, provider } = req.body;
 
   if (!email || !id || !provider) {
     throw new ValidationError('Missing required OAuth fields');
@@ -336,7 +336,7 @@ router.post('/oauth', asyncHandler(async (req: Request, res: Response) => {
   });
 }));
 
-router.post('/oauth/register', asyncHandler(async (req: Request, res: Response) => {
+router.post('/oauth/register', asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const { email, id, businessName, provider } = req.body;
 
   if (!email || !id || !provider) {
@@ -364,7 +364,7 @@ router.post('/oauth/register', asyncHandler(async (req: Request, res: Response) 
       businessId: business?.id || '',
     });
 
-    return res.json({
+    res.json({
       success: true,
       token,
       user: {
@@ -374,6 +374,7 @@ router.post('/oauth/register', asyncHandler(async (req: Request, res: Response) 
         businessName: business?.name,
       },
     });
+    return;
   }
 
   // Create new user with OAuth (no password)

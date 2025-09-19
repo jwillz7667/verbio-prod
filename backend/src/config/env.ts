@@ -38,7 +38,7 @@ const envSchema = z.object({
   STRIPE_PUBLISHABLE_KEY: z.string().optional(),
 
   // Sentry Configuration
-  SENTRY_DSN: z.string().url().optional(),
+  SENTRY_DSN: z.string().optional().transform(val => val && val.trim() !== '' ? val : undefined),
   SENTRY_ENVIRONMENT: z.string().optional(),
 
   // Redis Configuration
