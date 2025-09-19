@@ -7,6 +7,9 @@ import { z } from 'zod';
 import toast from 'react-hot-toast';
 import { EyeIcon, EyeSlashIcon, EnvelopeIcon, LockClosedIcon, BuildingOfficeIcon } from '@heroicons/react/24/outline';
 import { useAuthStore } from '../store/authStore';
+import { supabase } from '../services/supabase';
+import Header from '../components/Header';
+import Footer from '../components/Footer';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -80,6 +83,20 @@ const Login: React.FC = () => {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+      if (error) throw error;
+    } catch (error: any) {
+      toast.error('Google sign-in failed. Please try again.');
+    }
+  };
+
   const toggleMode = () => {
     setIsRegister(!isRegister);
     loginForm.reset();
@@ -88,30 +105,42 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700">
-      <div className="absolute inset-0 bg-black/20" />
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white">
+      <Header />
 
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ duration: 0.3 }}
-        className="relative w-full max-w-md px-6"
-      >
-        <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl p-8">
-          <div className="text-center mb-8">
-            <motion.h1
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-3xl font-bold text-gray-900"
-            >
-              {isRegister ? 'Create Account' : 'Welcome Back'}
-            </motion.h1>
-            <p className="mt-2 text-gray-600">
-              {isRegister
-                ? 'Start your journey with AI voice agents'
-                : 'Sign in to manage your voice agents'}
-            </p>
-          </div>
+      <div className="flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.3 }}
+          className="w-full max-w-md"
+        >
+          <div className="bg-white rounded-3xl shadow-xl p-8 border border-gray-100">
+            <div className="text-center mb-8">
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex justify-center mb-4"
+              >
+                <div className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-600 rounded-2xl flex items-center justify-center shadow-lg">
+                  <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-4h2v2h-2zm0-10h2v8h-2z"/>
+                  </svg>
+                </div>
+              </motion.div>
+              <motion.h1
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-3xl font-bold text-gray-900"
+              >
+                {isRegister ? 'Create Account' : 'Welcome Back'}
+              </motion.h1>
+              <p className="mt-2 text-gray-600">
+                {isRegister
+                  ? 'Start your journey with AI voice agents'
+                  : 'Sign in to manage your voice agents'}
+              </p>
+            </div>
 
           <AnimatePresence mode="wait">
             {!isRegister ? (
@@ -132,7 +161,7 @@ const Login: React.FC = () => {
                     <input
                       {...loginForm.register('email')}
                       type="email"
-                      className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      className="pl-10 w-full px-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50 transition-all"
                       placeholder="you@example.com"
                       autoComplete="email"
                     />
@@ -153,7 +182,7 @@ const Login: React.FC = () => {
                     <input
                       {...loginForm.register('password')}
                       type={showPassword ? 'text' : 'password'}
-                      className="pl-10 pr-10 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      className="pl-10 pr-10 w-full px-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50 transition-all"
                       placeholder="••••••••"
                       autoComplete="current-password"
                     />
@@ -179,9 +208,32 @@ const Login: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-violet-600 text-white py-2 px-4 rounded-lg hover:bg-violet-700 focus:ring-4 focus:ring-violet-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium"
+                  className="w-full bg-gradient-to-r from-primary-500 to-primary-600 text-white py-3 px-4 rounded-xl hover:from-primary-600 hover:to-primary-700 focus:ring-4 focus:ring-primary-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg shadow-primary-500/20"
                 >
                   {isLoading ? 'Signing in...' : 'Sign In'}
+                </button>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-gray-200" />
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-4 bg-white text-gray-500">Or continue with</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all duration-200 font-medium"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82Z"/>
+                    <path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.565 24 12.255 24Z"/>
+                    <path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 0 0 0 10.76l3.98-3.09Z"/>
+                    <path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0c-4.69 0-8.74 2.7-10.71 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96Z"/>
+                  </svg>
+                  Sign in with Google
                 </button>
               </motion.form>
             ) : (
@@ -202,7 +254,7 @@ const Login: React.FC = () => {
                     <input
                       {...registerForm.register('businessName')}
                       type="text"
-                      className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      className="pl-10 w-full px-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50 transition-all"
                       placeholder="Your Business Name"
                       autoComplete="organization"
                     />
@@ -223,7 +275,7 @@ const Login: React.FC = () => {
                     <input
                       {...registerForm.register('email')}
                       type="email"
-                      className="pl-10 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      className="pl-10 w-full px-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50 transition-all"
                       placeholder="you@example.com"
                       autoComplete="email"
                     />
@@ -244,7 +296,7 @@ const Login: React.FC = () => {
                     <input
                       {...registerForm.register('password')}
                       type={showPassword ? 'text' : 'password'}
-                      className="pl-10 pr-10 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      className="pl-10 pr-10 w-full px-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50 transition-all"
                       placeholder="••••••••"
                       autoComplete="new-password"
                     />
@@ -276,7 +328,7 @@ const Login: React.FC = () => {
                     <input
                       {...registerForm.register('confirmPassword')}
                       type={showPassword ? 'text' : 'password'}
-                      className="pl-10 pr-10 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-violet-500 focus:border-transparent"
+                      className="pl-10 pr-10 w-full px-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-50 transition-all"
                       placeholder="••••••••"
                       autoComplete="new-password"
                     />
@@ -291,27 +343,53 @@ const Login: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full bg-violet-600 text-white py-2 px-4 rounded-lg hover:bg-violet-700 focus:ring-4 focus:ring-violet-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-medium"
+                  className="w-full bg-gradient-to-r from-primary-500 to-primary-600 text-white py-3 px-4 rounded-xl hover:from-primary-600 hover:to-primary-700 focus:ring-4 focus:ring-primary-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold shadow-lg shadow-primary-500/20"
                 >
                   {isLoading ? 'Creating account...' : 'Create Account'}
+                </button>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-gray-200" />
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-4 bg-white text-gray-500">Or continue with</span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGoogleSignIn}
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition-all duration-200 font-medium"
+                >
+                  <svg className="w-5 h-5" viewBox="0 0 24 24">
+                    <path fill="#4285F4" d="M23.745 12.27c0-.79-.07-1.54-.19-2.27h-11.3v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v3h3.86c2.26-2.09 3.56-5.17 3.56-8.82Z"/>
+                    <path fill="#34A853" d="M12.255 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-3c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96h-3.98v3.09C3.515 21.3 7.565 24 12.255 24Z"/>
+                    <path fill="#FBBC05" d="M5.525 14.29c-.25-.72-.38-1.49-.38-2.29s.14-1.57.38-2.29V6.62h-3.98a11.86 11.86 0 0 0 0 10.76l3.98-3.09Z"/>
+                    <path fill="#EA4335" d="M12.255 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C18.205 1.19 15.495 0 12.255 0c-4.69 0-8.74 2.7-10.71 6.62l3.98 3.09c.95-2.85 3.6-4.96 6.73-4.96Z"/>
+                  </svg>
+                  Sign up with Google
                 </button>
               </motion.form>
             )}
           </AnimatePresence>
 
-          <div className="mt-6 text-center">
-            <button
-              type="button"
-              onClick={toggleMode}
-              className="text-sm text-violet-600 hover:text-violet-800 font-medium"
-            >
-              {isRegister
-                ? 'Already have an account? Sign in'
-                : "Don't have an account? Create one"}
-            </button>
+            <div className="mt-6 text-center">
+              <button
+                type="button"
+                onClick={toggleMode}
+                className="text-sm text-primary-600 hover:text-primary-700 font-medium transition-colors"
+              >
+                {isRegister
+                  ? 'Already have an account? Sign in'
+                  : "Don't have an account? Create one"}
+              </button>
+            </div>
           </div>
-        </div>
-      </motion.div>
+        </motion.div>
+      </div>
+
+      <Footer />
     </div>
   );
 };

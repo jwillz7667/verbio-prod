@@ -27,6 +27,9 @@ const SENTRY_DSN = config.get('SENTRY_DSN');
 
 const app: Application = express();
 
+// Trust proxy when running on Cloud Run
+app.set('trust proxy', true);
+
 if (SENTRY_DSN && NODE_ENV === 'production') {
   Sentry.init({
     dsn: SENTRY_DSN,
@@ -74,7 +77,19 @@ app.use(sanitizationMiddleware);
 app.use(compression());
 app.use(
   cors({
-    origin: FRONTEND_URL,
+    origin: (origin, callback) => {
+      const allowedOrigins = [
+        'https://verbio.app',
+        'https://www.verbio.app',
+        'http://localhost:5173',
+        'http://localhost:3000'
+      ];
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],

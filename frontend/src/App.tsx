@@ -21,6 +21,7 @@ const Agents = lazy(() => import('./pages/Agents'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const Settings = lazy(() => import('./pages/Settings'));
 const NotFound = lazy(() => import('./pages/NotFound'));
+const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -144,6 +145,17 @@ const App: React.FC = () => {
                   </motion.div>
                 </Suspense>
               </PublicRoute>
+            }
+          />
+
+          <Route
+            path="/auth/callback"
+            element={
+              <Suspense fallback={<LoadingSpinner fullScreen />}>
+                <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
+                  <AuthCallback />
+                </motion.div>
+              </Suspense>
             }
           />
 

@@ -11,8 +11,8 @@ COPY package*.json ./
 COPY backend/package*.json ./backend/
 COPY frontend/package*.json ./frontend/
 
-# Install dependencies
-RUN npm ci --only=production
+# Install dependencies (skip prepare scripts for production)
+RUN npm ci --only=production --ignore-scripts
 
 # Copy source code
 COPY . .
@@ -39,8 +39,8 @@ WORKDIR /app
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/backend/package*.json ./backend/
 
-# Install production dependencies only
-RUN npm ci --only=production --omit=dev
+# Install production dependencies only (skip prepare scripts)
+RUN npm ci --only=production --omit=dev --ignore-scripts
 
 # Copy built application
 COPY --from=builder --chown=nodejs:nodejs /app/backend/dist ./backend/dist
