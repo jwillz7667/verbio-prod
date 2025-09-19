@@ -95,14 +95,10 @@ class ApiClient {
   }
 
   private async refreshToken(): Promise<void> {
-    try {
-      const response = await this.client.post('/api/auth/refresh');
-      const { token } = response.data;
-      if (token) {
-        localStorage.setItem('auth_token', token);
-      }
-    } catch (error) {
-      throw error;
+    const response = await this.client.post('/api/auth/refresh');
+    const { token } = response.data;
+    if (token) {
+      localStorage.setItem('auth_token', token);
     }
   }
 
@@ -236,6 +232,31 @@ class ApiClient {
 
   async getAnalytics(params?: Record<string, unknown>): Promise<Record<string, unknown>> {
     const response = await this.client.get('/api/business/analytics', { params });
+    return response.data;
+  }
+
+  async getDashboardMetrics(): Promise<any> {
+    const response = await this.client.get('/api/analytics/dashboard');
+    return response.data;
+  }
+
+  async getAnalyticsTrends(range?: string): Promise<any> {
+    const response = await this.client.get('/api/analytics/trends', { params: { range } });
+    return response.data;
+  }
+
+  async getCallOutcomes(): Promise<any> {
+    const response = await this.client.get('/api/analytics/outcomes');
+    return response.data;
+  }
+
+  async getRecentActivity(): Promise<any> {
+    const response = await this.client.get('/api/analytics/activity');
+    return response.data;
+  }
+
+  async getAgentPerformance(): Promise<any> {
+    const response = await this.client.get('/api/analytics/performance');
     return response.data;
   }
 

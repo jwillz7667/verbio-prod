@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
+import api from '../services/api';
 import {
   LineChart,
   Line,
@@ -29,60 +30,67 @@ import MetricCard from '../components/dashboard/MetricCard';
 import clsx from 'clsx';
 
 const Dashboard: React.FC = () => {
-  const [selectedTimeRange, setSelectedTimeRange] = useState('30d');
+  const [selectedTimeRange, setSelectedTimeRange] = useState('7d');
 
-  // Mock data for charts
-  const volumeTrendData = [
-    { date: 'Jan 1', outbound: 120, inbound: 80, web: 45 },
-    { date: 'Jan 7', outbound: 145, inbound: 95, web: 52 },
-    { date: 'Jan 14', outbound: 160, inbound: 110, web: 58 },
-    { date: 'Jan 21', outbound: 135, inbound: 102, web: 48 },
-    { date: 'Jan 28', outbound: 180, inbound: 125, web: 65 },
-    { date: 'Feb 4', outbound: 195, inbound: 140, web: 72 },
-    { date: 'Feb 11', outbound: 210, inbound: 155, web: 78 },
-  ];
+  // Fetch metrics data
+  const { data: metricsData, isLoading: metricsLoading } = useQuery({
+    queryKey: ['dashboard-metrics'],
+    queryFn: async () => {
+      const response = await api.getDashboardMetrics();
+      return response.metrics;
+    },
+    refetchInterval: 30000, // Refetch every 30 seconds
+  });
 
-  const outcomeData = [
-    { name: 'Answered', value: 68, color: '#8b5cf6' },
-    { name: 'Missed', value: 15, color: '#3b82f6' },
-    { name: 'Failed', value: 10, color: '#ef4444' },
-    { name: 'Voicemail', value: 7, color: '#10b981' },
-  ];
+  // Fetch trend data
+  const { data: trendsData } = useQuery({
+    queryKey: ['analytics-trends', selectedTimeRange],
+    queryFn: async () => {
+      const response = await api.getAnalyticsTrends(selectedTimeRange);
+      return response.trendData;
+    },
+  });
+
+  // Fetch call outcomes
+  const { data: outcomesData } = useQuery({
+    queryKey: ['call-outcomes'],
+    queryFn: async () => {
+      const response = await api.getCallOutcomes();
+      return response.outcomes;
+    },
+  });
+
+  // Fetch recent activities
+  const { data: activitiesData } = useQuery({
+    queryKey: ['recent-activities'],
+    queryFn: async () => {
+      const response = await api.getRecentActivity();
+      return response.activities;
+    },
+    refetchInterval: 60000, // Refetch every minute
+  });
 
   const setupSteps = [
     { id: 1, title: 'Connect your phone number', completed: true },
     { id: 2, title: 'Configure AI agents', completed: true },
-    { id: 3, title: 'Set up webhooks', completed: false },
-    { id: 4, title: 'Test voice calls', completed: false },
-    { id: 5, title: 'Enable analytics', completed: false },
-  ];
-
-  const recentActivities = [
-    { id: 1, type: 'call', description: 'Inbound call handled by AI', time: '5 minutes ago', status: 'success' },
-    { id: 2, type: 'order', description: 'New order #1234 received', time: '15 minutes ago', status: 'success' },
-    { id: 3, type: 'credit', description: '1,000 credits purchased', time: '1 hour ago', status: 'info' },
-    { id: 4, type: 'agent', description: 'AI agent "Support Bot" updated', time: '2 hours ago', status: 'info' },
-    { id: 5, type: 'call', description: 'Call failed - no agent available', time: '3 hours ago', status: 'error' },
+    { id: 3, title: 'Set up webhooks', completed: metricsData?.activeAgents > 0 },
+    { id: 4, title: 'Test voice calls', completed: metricsData?.totalCalls > 0 },
+    { id: 5, title: 'Enable analytics', completed: true },
   ];
 
   const completedSteps = setupSteps.filter((step) => step.completed).length;
   const setupProgress = (completedSteps / setupSteps.length) * 100;
 
-  // Fetch metrics data
-  const { data: metrics, isLoading: metricsLoading } = useQuery({
-    queryKey: ['dashboard-metrics'],
-    queryFn: async () => {
-      // Mock API response
-      return {
-        activeSessions: 3,
-        creditsUsed: 550,
-        totalCalls: 150,
-        successRate: 94,
-        revenue: 2450,
-      };
-    },
-    refetchInterval: 30000, // Refetch every 30 seconds
-  });
+  const metrics = metricsData || {
+    activeSessions: 0,
+    creditsUsed: 0,
+    creditsRemaining: 0,
+    totalCalls: 0,
+    todayCalls: 0,
+    successRate: 0,
+    revenue: 0,
+    todayOrders: 0,
+  };
 
   const getActivityIcon = (type: string) => {
     switch (type) {
@@ -121,7 +129,7 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Active Sessions Alert */}
-      {metrics?.activeSessions && metrics.activeSessions > 0 && (
+      {metrics.activeSessions > 0 && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -139,7 +147,7 @@ const Dashboard: React.FC = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard
           title="Active Sessions"
-          value={metrics?.activeSessions || 0}
+          value={metrics.activeSessions}
           subtitle="Live now"
           icon={Phone}
           iconColor="text-green-600"
@@ -147,36 +155,36 @@ const Dashboard: React.FC = () => {
         />
         <MetricCard
           title="Credits Used"
-          value={metrics?.creditsUsed || 0}
+          value={metrics.creditsUsed}
           subtitle="This month"
-          change={{ value: 12, type: 'increase' }}
+          change={{ value: Math.round((metrics.creditsUsed / (metrics.creditsUsed + metrics.creditsRemaining)) * 100), type: metrics.creditsUsed > 0 ? 'increase' : 'neutral' }}
           icon={CreditCard}
           iconColor="text-blue-600"
           loading={metricsLoading}
         />
         <MetricCard
           title="Total Calls"
-          value={metrics?.totalCalls || 0}
+          value={metrics.totalCalls}
           subtitle="Last 30 days"
-          change={{ value: 5, type: 'increase' }}
+          change={{ value: metrics.todayCalls, type: metrics.todayCalls > 0 ? 'increase' : 'neutral' }}
           icon={PhoneCall}
           iconColor="text-purple-600"
           loading={metricsLoading}
         />
         <MetricCard
           title="Success Rate"
-          value={`${metrics?.successRate || 0}%`}
+          value={`${metrics.successRate}%`}
           subtitle="Completion rate"
-          change={{ value: 2, type: 'increase' }}
+          change={{ value: metrics.successRate > 90 ? 2 : -1, type: metrics.successRate > 90 ? 'increase' : 'decrease' }}
           icon={TrendingUp}
           iconColor="text-green-600"
           loading={metricsLoading}
         />
         <MetricCard
           title="Revenue"
-          value={`$${metrics?.revenue || 0}`}
+          value={`$${metrics.revenue.toFixed(2)}`}
           subtitle="This month"
-          change={{ value: 18, type: 'increase' }}
+          change={{ value: metrics.todayOrders, type: metrics.todayOrders > 0 ? 'increase' : 'neutral' }}
           icon={DollarSign}
           iconColor="text-yellow-600"
           loading={metricsLoading}
@@ -206,7 +214,7 @@ const Dashboard: React.FC = () => {
           </div>
 
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={volumeTrendData}>
+            <LineChart data={trendsData || []}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
               <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} />
               <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} />
@@ -308,7 +316,7 @@ const Dashboard: React.FC = () => {
           <ResponsiveContainer width="100%" height={250}>
             <PieChart>
               <Pie
-                data={outcomeData}
+                data={outcomesData || []}
                 cx="50%"
                 cy="50%"
                 innerRadius={60}
@@ -316,7 +324,7 @@ const Dashboard: React.FC = () => {
                 paddingAngle={2}
                 dataKey="value"
               >
-                {outcomeData.map((entry, index) => (
+                {(outcomesData || []).map((entry: any, index: number) => (
                   <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
@@ -325,7 +333,7 @@ const Dashboard: React.FC = () => {
           </ResponsiveContainer>
 
           <div className="mt-4 space-y-2">
-            {outcomeData.map((item) => (
+            {(outcomesData || []).map((item: any) => (
               <div key={item.name} className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
@@ -350,7 +358,7 @@ const Dashboard: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            {recentActivities.map((activity) => {
+            {(activitiesData || []).slice(0, 5).map((activity: any) => {
               const Icon = getActivityIcon(activity.type);
               const colorClass = getActivityColor(activity.status);
 
@@ -393,8 +401,8 @@ const Dashboard: React.FC = () => {
               <CreditCard className="w-6 h-6 text-primary-600" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-gray-900">2,400 credits remaining</p>
-              <p className="text-sm text-gray-600">Approximately 24 hours of voice calls</p>
+              <p className="text-2xl font-bold text-gray-900">{metrics.creditsRemaining.toLocaleString()} credits remaining</p>
+              <p className="text-sm text-gray-600">Approximately {Math.round(metrics.creditsRemaining / 100)} hours of voice calls</p>
             </div>
           </div>
           <button className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium shadow-lg hover:shadow-xl">

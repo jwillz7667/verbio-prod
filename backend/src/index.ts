@@ -18,6 +18,7 @@ import businessRoutes from './routes/business';
 import ordersRoutes from './routes/orders';
 import twilioRoutes from './routes/twilio';
 import { stripeRoutes } from './routes/stripe';
+import analyticsRoutes from './routes/analytics';
 import { handleConnection } from './socket/realtimeHandler';
 
 const PORT = config.get('PORT');
@@ -147,6 +148,7 @@ app.use('/api/business', businessRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/twilio', twilioRoutes);
 app.use('/api/stripe', stripeRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 server.on('upgrade', (request, socket, head) => {
   const pathname = new URL(request.url!, `http://${request.headers.host}`).pathname;
