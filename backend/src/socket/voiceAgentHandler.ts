@@ -1,8 +1,9 @@
 import { WebSocket } from 'ws';
 import { Server } from 'http';
 import { parse } from 'url';
-import { supabase } from '../config/supabase';
-import { twilioClient } from '../services/twilioService';
+import { supabaseAdmin as supabase } from '../config/supabase';
+import { getTwilioClient } from '../services/twilioService';
+const twilioClient = getTwilioClient();
 import { OpenAIRealtimeService } from '../services/openaiRealtimeService';
 import logger from '../utils/logger';
 

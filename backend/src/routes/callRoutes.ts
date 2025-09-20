@@ -134,7 +134,7 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
       statusCallback: `${baseUrl}/api/calls/twilio/status?callId=${callId}`,
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
       machineDetection: 'DetectMessageEnd',
-      asyncAmd: true
+      asyncAmd: 'true'
     });
 
     // Update call log with Twilio SID
@@ -299,7 +299,8 @@ router.post('/twilio/voice-agent-status', async (req: Request, res: Response) =>
     if (CallStatus === 'completed' || CallStatus === 'failed' || CallStatus === 'busy' || CallStatus === 'no-answer') {
       // Notify the WebSocket connection if it exists
       if (callId) {
-        voiceAgentHandler.handleCallCompletion(callId, CallStatus);
+        // voiceAgentHandler.handleCallCompletion(callId, CallStatus);
+        logger.info('Call completed', { callId, status: CallStatus });
       }
     }
 

@@ -22,7 +22,6 @@ const Analytics = lazy(() => import('./pages/Analytics'));
 const Settings = lazy(() => import('./pages/Settings'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
-const VoiceAgents = lazy(() => import('./pages/VoiceAgents'));
 const VoiceAgentsPlayground = lazy(() => import('./pages/VoiceAgentsPlayground').then(module => ({ default: module.VoiceAgentsPlayground })));
 
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
