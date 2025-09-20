@@ -2,7 +2,10 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'ax
 import toast from 'react-hot-toast';
 import type { User, Business, Agent, Order, Payment, CallLog } from '../types';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ||
+  (window.location.hostname === 'localhost'
+    ? 'http://localhost:8080'
+    : `${window.location.protocol}//${window.location.host}`);
 
 class ApiClient {
   private client: AxiosInstance;
@@ -280,8 +283,62 @@ class ApiClient {
     return response.data.csrfToken;
   }
 
+  async oauthCallback(accessToken: string, refreshToken: string, user: any): Promise<{ user: User; token: string }> {
+    const response = await this.client.post('/api/auth/oauth/callback', {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      user
+    });
+
+    const { token, user: userData } = response.data;
+
+    if (token) {
+      localStorage.setItem('auth_token', token);
+    }
+    if (userData) {
+      localStorage.setItem('user', JSON.stringify(userData));
+    }
+
+    return response.data;
+  }
+
+  async linkOAuthAccount(provider: string, providerId: string, email: string, password: string): Promise<any> {
+    const response = await this.client.post('/api/auth/oauth/link', {
+      provider,
+      providerId,
+      email,
+      password
+    });
+    return response.data;
+  }
+
+  async unlinkOAuthAccount(userId: string, provider: string): Promise<any> {
+    const response = await this.client.post('/api/auth/oauth/unlink', {
+      userId,
+      provider
+    });
+    return response.data;
+  }
+
   getAxiosInstance(): AxiosInstance {
     return this.client;
+  }
+
+  // Generic HTTP methods for custom endpoints
+  async get(url: string, config?: any) {
+    return this.client.get(url, config);
+  }
+
+  async post(url: string, data?: any, config?: any) {
+    return this.client.post(url, data, config);
+  }
+
+  async put(url: string, data?: any, config?: any) {
+    return this.client.put(url, data, config);
+  }
+
+  async delete(url: string, config?: any) {
+    return this.client.delete(url, config);
   }
 }
 

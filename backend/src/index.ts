@@ -14,6 +14,7 @@ import { errorHandler } from './utils/errorHandler';
 import { httpsRedirect, idempotencyMiddleware, securityHeaders, requestLogging } from './middleware/security';
 import { sanitizationMiddleware } from './middleware/sanitization';
 import authRoutes from './routes/auth';
+import authOAuthRoutes from './routes/authOAuth';
 import businessRoutes from './routes/business';
 import ordersRoutes from './routes/orders';
 import twilioRoutes from './routes/twilio';
@@ -22,6 +23,7 @@ import analyticsRoutes from './routes/analytics';
 import callRoutes from './routes/callRoutes';
 import { handleConnection } from './socket/realtimeHandler';
 import { voiceAgentHandler } from './socket/voiceAgentHandler';
+import { setupRealtimePlaygroundWebSocket } from './socket/realtimePlaygroundHandler';
 
 const PORT = config.get('PORT');
 const FRONTEND_URL = config.get('FRONTEND_URL');
@@ -85,17 +87,29 @@ app.use(
         'https://verbio.app',
         'https://www.verbio.app',
         'http://localhost:5173',
-        'http://localhost:3000'
+        'http://localhost:3000',
+        'http://localhost:5174',
+        'https://accounts.google.com',
+        'https://github.com'
       ];
+      // Allow requests with no origin (mobile apps, Postman, etc)
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
-        callback(new Error('Not allowed by CORS'));
+        // Log but allow in development
+        if (NODE_ENV !== 'production') {
+          logger.warn('CORS: Allowing origin in development', { origin });
+          callback(null, true);
+        } else {
+          callback(new Error('Not allowed by CORS'));
+        }
       }
     },
     credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-CSRF-Token', 'X-Requested-With'],
+    exposedHeaders: ['Set-Cookie'],
+    maxAge: 86400 // Cache preflight for 24 hours
   })
 );
 app.use(helmet({
@@ -146,6 +160,7 @@ app.get('/', (_req: Request, res: Response) => {
 app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/auth/oauth', authOAuthRoutes);
 app.use('/api/business', businessRoutes);
 app.use('/api/orders', ordersRoutes);
 app.use('/api/twilio', twilioRoutes);
@@ -153,12 +168,18 @@ app.use('/api/stripe', stripeRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/calls', callRoutes);
 
+// Setup the realtime playground WebSocket
+setupRealtimePlaygroundWebSocket(server);
+
 server.on('upgrade', (request, socket, head) => {
   const pathname = new URL(request.url!, `http://${request.headers.host}`).pathname;
 
   if (pathname === '/ws/voice-agent') {
     // Voice agent WebSocket handled by voiceAgentHandler
     voiceAgentHandler.setupWebSocket(server);
+  } else if (pathname === '/ws/realtime') {
+    // Realtime playground WebSocket is handled by setupRealtimePlaygroundWebSocket
+    return;
   } else if (pathname === '/realtime') {
     const origin = request.headers.origin || '';
     const validOrigins = [

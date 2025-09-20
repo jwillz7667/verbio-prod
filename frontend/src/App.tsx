@@ -23,6 +23,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const VoiceAgents = lazy(() => import('./pages/VoiceAgents'));
+const VoiceAgentsPlayground = lazy(() => import('./pages/VoiceAgentsPlayground').then(module => ({ default: module.VoiceAgentsPlayground })));
 
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -252,6 +253,17 @@ const App: React.FC = () => {
                 <Suspense fallback={<LoadingSpinner />}>
                   <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
                     <VoiceAgents />
+                  </motion.div>
+                </Suspense>
+              }
+            />
+
+            <Route
+              path="voice-playground"
+              element={
+                <Suspense fallback={<LoadingSpinner />}>
+                  <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
+                    <VoiceAgentsPlayground />
                   </motion.div>
                 </Suspense>
               }

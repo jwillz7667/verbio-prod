@@ -1,16 +1,25 @@
+/**
+ * WebSocket handler for Twilio Media Streams
+ * Uses the TwilioOpenAIRealtimeBridge for production-ready audio streaming
+ */
+
 import { WebSocket, WebSocketServer } from 'ws';
 import { IncomingMessage } from 'http';
 import { parse } from 'url';
 import { config } from '../config/env';
-import { RealtimeSession } from '../services/openaiService';
+import { TwilioOpenAIRealtimeBridge } from '../services/twilioRealtimeBridge';
 import { supabaseAdmin } from '../config/supabase';
-import { logger } from '../utils/logger';
-import { StreamEvent } from '../types/twilio';
+import Logger from '../utils/logger';
+import { Tool } from '../types/openaiRealtimeEvents';
+
+const logger = Logger;
 
 interface ConnectionParams {
   businessId?: string;
   agentType?: string;
   from?: string;
+  callSid?: string;
+  streamSid?: string;
 }
 
 interface AgentConfig {
@@ -29,32 +38,53 @@ interface AgentConfig {
   };
 }
 
+// Connection pool to manage active bridges
+const activeBridges = new Map<string, TwilioOpenAIRealtimeBridge>();
+
 export async function handleConnection(ws: WebSocket, req: IncomingMessage): Promise<void> {
   const connectionId = Date.now().toString();
-  let session: RealtimeSession | null = null;
+  let bridge: TwilioOpenAIRealtimeBridge | null = null;
   let heartbeatInterval: NodeJS.Timeout | null = null;
 
   try {
+    // Parse connection parameters
     const url = parse(req.url || '', true);
     const params: ConnectionParams = {
       businessId: url.query['businessId'] as string,
       agentType: url.query['agentType'] as string,
       from: url.query['from'] as string,
+      callSid: url.query['callSid'] as string,
+      streamSid: url.query['streamSid'] as string,
     };
+
+    // Validate origin for security
+    const origin = req.headers.origin || req.headers.host;
+    if (config.get('NODE_ENV') === 'production') {
+      const allowedOrigins = ['media.twiliocdn.com', 'twiliocdn.com'];
+      if (origin && !allowedOrigins.some(allowed => origin.includes(allowed))) {
+        logger.warn('Rejected connection from unauthorized origin', { origin, connectionId });
+        ws.send(JSON.stringify({ error: 'Unauthorized origin' }));
+        ws.close(1008, 'Unauthorized');
+        return;
+      }
+    }
 
     logger.info('WebSocket connection established', {
       connectionId,
       params,
-      headers: req.headers,
+      origin,
+      userAgent: req.headers['user-agent'],
     });
 
+    // Validate required parameters
     if (!params.businessId) {
-      logger.error('Missing businessId parameter');
+      logger.error('Missing businessId parameter', { connectionId });
       ws.send(JSON.stringify({ error: 'Missing businessId parameter' }));
       ws.close(1008, 'Missing businessId');
       return;
     }
 
+    // Fetch business and agent configuration
     const { data: business, error: businessError } = await supabaseAdmin
       .from('businesses')
       .select(`
@@ -74,12 +104,17 @@ export async function handleConnection(ws: WebSocket, req: IncomingMessage): Pro
       .single();
 
     if (businessError || !business) {
-      logger.error('Business not found', { businessId: params.businessId, error: businessError });
+      logger.error('Business not found', {
+        businessId: params.businessId,
+        error: businessError,
+        connectionId,
+      });
       ws.send(JSON.stringify({ error: 'Business not found' }));
       ws.close(1008, 'Business not found');
       return;
     }
 
+    // Select appropriate agent
     let agent: AgentConfig | null = null;
 
     if (params.agentType) {
@@ -92,108 +127,116 @@ export async function handleConnection(ws: WebSocket, req: IncomingMessage): Pro
       agent = (business.agents.find((a: AgentConfig) => a.is_active) || business.agents[0]) as AgentConfig;
     }
 
+    // Build system prompt with business context
     const businessData = business.data_json || {};
-    const menuInfo = businessData.menu ? `\n\nOur menu:\n${JSON.stringify(businessData.menu, null, 2)}` : '';
-    const hoursInfo = businessData.hours ? `\n\nBusiness hours:\n${JSON.stringify(businessData.hours, null, 2)}` : '';
-    const pricingInfo = businessData.pricing ? `\n\nPricing:\n${JSON.stringify(businessData.pricing, null, 2)}` : '';
+    const contextualInfo = buildBusinessContext(business.name, businessData);
+    const systemPrompt = buildSystemPrompt(business.name, agent, businessData, contextualInfo);
 
-    const defaultPrompt = `You are a helpful AI assistant for ${business.name}.${menuInfo}${hoursInfo}${pricingInfo}
-
-Please assist customers with their inquiries professionally and accurately.`;
-
-    const instructions = agent?.prompt || defaultPrompt;
-
+    // Configure voice settings
     const voiceConfig = agent?.voice_config || {};
-    const voice = voiceConfig.voice || 'cedar';
-    const vadEagerness = voiceConfig.eagerness || 'medium';
-    const noiseReduction = voiceConfig.noise_reduction || 'auto';
+    const voice = mapVoiceToOpenAI(voiceConfig.voice || 'cedar');
 
+    // Build tools configuration based on agent type
+    const tools = buildToolsConfiguration(agent?.type || 'service', businessData);
+
+    // Validate OpenAI API key
     const openaiApiKey = config.get('OPENAI_API_KEY');
     if (!openaiApiKey) {
-      logger.error('OpenAI API key not configured');
-      ws.send(JSON.stringify({ error: 'OpenAI API key not configured' }));
+      logger.error('OpenAI API key not configured', { connectionId });
+      ws.send(JSON.stringify({ error: 'Server configuration error' }));
       ws.close(1011, 'Server configuration error');
       return;
     }
 
-    const realtimeConfig: any = {
-      instructions,
-      voice: voice as any,
+    // Create bridge configuration
+    const bridgeConfig = {
       businessId: params.businessId,
+      ...(agent?.id && { agentId: agent.id }),
       customerPhone: params.from || 'unknown',
-      agentType: agent?.type || 'service',
-      vadMode: 'semantic_vad',
-      vadEagerness: vadEagerness as any,
-      noiseReduction: noiseReduction as any,
+      ...(params.streamSid && { twilioStreamSid: params.streamSid }),
+      ...(params.callSid && { twilioCallSid: params.callSid }),
+      voice,
+      systemPrompt,
       temperature: 0.8,
-      maxOutputTokens: 4096,
+      tools,
     };
 
-    const mcpUrl = config.get('MCP_SERVER_URL');
-    if (mcpUrl) {
-      realtimeConfig.mcpServerUrl = mcpUrl;
-    }
+    // Initialize the bridge
+    bridge = new TwilioOpenAIRealtimeBridge(bridgeConfig);
 
-    session = new RealtimeSession(openaiApiKey, realtimeConfig);
-
-    session.on('audio_data', (data: any) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(data));
-      }
+    // Setup bridge event handlers
+    bridge.on('initialized', (data) => {
+      logger.info('Bridge initialized', { ...data, connectionId });
     });
 
-    session.on('error', (error: any) => {
-      logger.error('RealtimeSession error', { error, connectionId });
+    bridge.on('transcription', async (data) => {
+      // Forward transcriptions to client if needed
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
-          event: 'error',
-          message: 'Session error occurred'
+          event: 'transcription',
+          ...data,
         }));
       }
     });
 
-    session.on('twilio_stream_start', (data: any) => {
-      logger.info('Twilio stream started via session', { data, connectionId });
+    bridge.on('functionCall', async (data) => {
+      logger.info('Function call received', { ...data, connectionId });
+      // Handle function calls (orders, payments, etc.)
+      await handleFunctionCall(data, params.businessId!);
     });
 
-    session.on('twilio_stream_stop', (data: any) => {
-      logger.info('Twilio stream stopped via session', { data, connectionId });
+    bridge.on('error', (data) => {
+      logger.error('Bridge error', { ...data, connectionId });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          event: 'error',
+          ...data,
+        }));
+      }
     });
 
-    await session.connect();
+    bridge.on('reconnecting', (data) => {
+      logger.info('Bridge reconnecting', { ...data, connectionId });
+    });
 
-    logger.info('OpenAI session created successfully', {
+    bridge.on('disconnected', (data) => {
+      logger.info('Bridge disconnected', { ...data, connectionId });
+      // Clean up from connection pool
+      if (params.callSid) {
+        activeBridges.delete(params.callSid);
+      }
+    });
+
+    // Initialize the bridge with Twilio WebSocket
+    await bridge.initialize(ws);
+
+    // Add to connection pool for management
+    if (params.callSid) {
+      activeBridges.set(params.callSid, bridge);
+    }
+
+    // Setup heartbeat for connection health monitoring
+    heartbeatInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.ping();
+      } else {
+        clearInterval(heartbeatInterval!);
+      }
+    }, 30000);
+
+    // Send successful connection message
+    ws.send(JSON.stringify({
+      event: 'connected',
       connectionId,
       businessId: params.businessId,
       agentType: agent?.type || 'default',
       voice,
-      vadEagerness,
-      noiseReduction,
-    });
+    }));
 
-    heartbeatInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.ping();
-      }
-    }, 30000);
+    // Log connection to database
+    await logConnectionToDatabase(params.businessId, params.from || 'unknown', agent?.id, connectionId);
 
-    ws.on('message', async (data: Buffer) => {
-      try {
-        const message = data.toString();
-        const event = JSON.parse(message) as StreamEvent;
-
-        if (event.event && session) {
-          await session.handleTwilioEvent(event);
-        } else if (!session) {
-          logger.error('Session is null', { connectionId });
-        } else {
-          logger.warn('Unknown message format', { message, connectionId });
-        }
-      } catch (error) {
-        logger.error('Error processing WebSocket message', { error, connectionId });
-      }
-    });
-
+    // Setup WebSocket event handlers
     ws.on('close', (code: number, reason: Buffer) => {
       logger.info('WebSocket connection closed', {
         connectionId,
@@ -206,31 +249,25 @@ Please assist customers with their inquiries professionally and accurately.`;
         heartbeatInterval = null;
       }
 
-      if (session) {
-        session.disconnect();
-        session = null;
-      }
+      // Bridge will handle its own cleanup through the event handlers
     });
 
     ws.on('error', (error: Error) => {
-      logger.error('WebSocket error', { error: error.message, connectionId });
+      logger.error('WebSocket error', {
+        error: error.message,
+        connectionId,
+      });
     });
 
     ws.on('pong', () => {
       logger.debug('Pong received', { connectionId });
     });
 
-    ws.send(JSON.stringify({
-      event: 'connected',
-      connectionId,
-      businessId: params.businessId,
-      agentType: agent?.type || 'default',
-    }));
-
-    await logConnectionToDatabase(params.businessId, params.from || 'unknown', agent?.id, connectionId);
-
   } catch (error) {
-    logger.error('Error handling WebSocket connection', { error, connectionId });
+    logger.error('Error handling WebSocket connection', {
+      error,
+      connectionId,
+    });
 
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ error: 'Internal server error' }));
@@ -241,12 +278,248 @@ Please assist customers with their inquiries professionally and accurately.`;
       clearInterval(heartbeatInterval);
     }
 
-    if (session) {
-      session.disconnect();
+    if (bridge) {
+      await bridge.disconnect();
     }
   }
 }
 
+/**
+ * Build business context for the system prompt
+ */
+function buildBusinessContext(_businessName: string, businessData: any): string {
+  let context = '';
+
+  if (businessData.menu && Array.isArray(businessData.menu)) {
+    context += '\n\nMenu:\n';
+    businessData.menu.forEach((item: any) => {
+      context += `- ${item.name}: $${item.price}`;
+      if (item.description) context += ` - ${item.description}`;
+      context += '\n';
+    });
+  }
+
+  if (businessData.hours) {
+    context += '\n\nBusiness Hours:\n';
+    Object.entries(businessData.hours).forEach(([day, hours]: [string, any]) => {
+      if (hours.closed) {
+        context += `${day}: Closed\n`;
+      } else {
+        context += `${day}: ${hours.open} - ${hours.close}\n`;
+      }
+    });
+  }
+
+  if (businessData.pricing) {
+    context += '\n\nPricing:\n';
+    Object.entries(businessData.pricing).forEach(([service, price]) => {
+      context += `- ${service}: $${price}\n`;
+    });
+  }
+
+  if (businessData.location) {
+    const loc = businessData.location;
+    context += `\n\nLocation: ${loc.address}, ${loc.city}, ${loc.state} ${loc.zip}\n`;
+  }
+
+  return context;
+}
+
+/**
+ * Build system prompt for the AI agent
+ */
+function buildSystemPrompt(
+  businessName: string,
+  agent: AgentConfig | null,
+  _businessData: any,
+  contextualInfo: string
+): string {
+  const defaultPrompt = `You are a professional and helpful AI assistant for ${businessName}.
+${contextualInfo}
+
+Guidelines:
+1. Be professional, friendly, and concise
+2. Only provide information you have been given
+3. If you don't know something, politely say so
+4. Keep responses brief and natural for phone conversations
+5. When taking orders, confirm details clearly
+6. For payments, ensure security and accuracy
+
+Please assist customers with their inquiries professionally.`;
+
+  return agent?.prompt || defaultPrompt;
+}
+
+/**
+ * Map voice names to OpenAI voices
+ */
+function mapVoiceToOpenAI(voice: string): 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer' | 'cedar' | 'marin' {
+  const voiceMap: Record<string, any> = {
+    'alloy': 'alloy',
+    'echo': 'echo',
+    'fable': 'fable',
+    'onyx': 'onyx',
+    'nova': 'nova',
+    'shimmer': 'shimmer',
+    'cedar': 'cedar',
+    'marin': 'marin',
+    'ash': 'echo',
+    'ballad': 'nova',
+    'coral': 'shimmer',
+    'sage': 'fable',
+    'verse': 'alloy',
+  };
+
+  return voiceMap[voice.toLowerCase()] || 'cedar';
+}
+
+/**
+ * Build tools configuration based on agent type
+ */
+function buildToolsConfiguration(agentType: string, _businessData: any): Tool[] {
+  const tools: Tool[] = [];
+
+  if (agentType === 'order' || agentType === 'payment') {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'create_order',
+        description: 'Create a new customer order',
+        parameters: {
+          type: 'object',
+          properties: {
+            items: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  quantity: { type: 'number' },
+                  price: { type: 'number' },
+                },
+                required: ['name', 'quantity', 'price'],
+              },
+            },
+            customer_phone: { type: 'string' },
+            special_instructions: { type: 'string' },
+          },
+          required: ['items', 'customer_phone'],
+        },
+        strict: true,
+      },
+    });
+  }
+
+  if (agentType === 'payment') {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'process_payment',
+        description: 'Process a payment for an order',
+        parameters: {
+          type: 'object',
+          properties: {
+            order_id: { type: 'string' },
+            amount: { type: 'number' },
+            payment_method: {
+              type: 'string',
+              enum: ['card', 'cash', 'digital_wallet'],
+            },
+          },
+          required: ['order_id', 'amount', 'payment_method'],
+        },
+        strict: true,
+      },
+    });
+  }
+
+  // Add general inquiry tools
+  tools.push({
+    type: 'function',
+    function: {
+      name: 'get_business_info',
+      description: 'Get business information like hours, location, or services',
+      parameters: {
+        type: 'object',
+        properties: {
+          info_type: {
+            type: 'string',
+            enum: ['hours', 'location', 'services', 'menu', 'pricing'],
+          },
+        },
+        required: ['info_type'],
+      },
+      strict: true,
+    },
+  });
+
+  return tools;
+}
+
+/**
+ * Handle function calls from the AI
+ */
+async function handleFunctionCall(
+  data: { name: string; args: unknown; sessionId: string },
+  businessId: string
+): Promise<void> {
+  try {
+    switch (data.name) {
+      case 'create_order':
+        await createOrder(businessId, data.args as any);
+        break;
+
+      case 'process_payment':
+        await processPayment(businessId, data.args as any);
+        break;
+
+      case 'get_business_info':
+        // This would typically return business info
+        break;
+
+      default:
+        logger.warn('Unknown function call', data);
+    }
+  } catch (error) {
+    logger.error('Error handling function call', { error, data });
+  }
+}
+
+/**
+ * Create an order in the database
+ */
+async function createOrder(businessId: string, orderData: any): Promise<void> {
+  const { items, customer_phone, special_instructions } = orderData;
+
+  const total = items.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+
+  const { error } = await supabaseAdmin.from('orders').insert({
+    business_id: businessId,
+    customer_phone,
+    items,
+    total,
+    status: 'pending',
+    payment_status: 'pending',
+    metadata: { special_instructions },
+  });
+
+  if (error) {
+    logger.error('Failed to create order', { error, orderData });
+    throw error;
+  }
+}
+
+/**
+ * Process a payment
+ */
+async function processPayment(businessId: string, paymentData: any): Promise<void> {
+  // This would integrate with your payment processing logic
+  logger.info('Processing payment', { businessId, paymentData });
+}
+
+/**
+ * Log connection to database
+ */
 async function logConnectionToDatabase(
   businessId: string,
   customerPhone: string,
@@ -254,21 +527,18 @@ async function logConnectionToDatabase(
   connectionId: string
 ): Promise<void> {
   try {
-    const { error } = await supabaseAdmin
-      .from('call_logs')
-      .insert({
-        business_id: businessId,
-        call_sid: `ws-${connectionId}`,
-        from_number: customerPhone,
-        to_number: 'websocket',
-        direction: 'inbound',
-        status: 'in-progress',
-        agent_id: agentId,
-        metadata: {
-          type: 'websocket',
-          connection_id: connectionId,
-        },
-      });
+    const { error } = await supabaseAdmin.from('call_logs').insert({
+      business_id: businessId,
+      call_sid: `ws-${connectionId}`,
+      from_number: customerPhone,
+      to_number: 'websocket',
+      status: 'initiated',
+      agent_id: agentId,
+      metadata: {
+        type: 'websocket',
+        connection_id: connectionId,
+      },
+    });
 
     if (error) {
       logger.error('Failed to log connection to database', { error });
@@ -278,12 +548,37 @@ async function logConnectionToDatabase(
   }
 }
 
+/**
+ * Create WebSocket server for Twilio Media Streams
+ */
 export function createRealtimeWebSocketServer(): WebSocketServer {
   const wss = new WebSocketServer({ noServer: true });
 
   wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-    handleConnection(ws, req);
+    void handleConnection(ws, req);
   });
 
+  // Periodic cleanup of stale connections
+  setInterval(() => {
+    const staleThreshold = Date.now() - 600000; // 10 minutes
+    for (const [callSid, bridge] of activeBridges) {
+      const metrics = bridge.getMetrics();
+      if (metrics.startTime < staleThreshold && metrics.packetsReceived === 0) {
+        logger.info('Cleaning up stale bridge', { callSid });
+        bridge.disconnect();
+        activeBridges.delete(callSid);
+      }
+    }
+  }, 60000);
+
+  logger.info('Twilio Realtime WebSocket server created');
+
   return wss;
+}
+
+/**
+ * Get active bridges for monitoring
+ */
+export function getActiveBridges(): Map<string, TwilioOpenAIRealtimeBridge> {
+  return activeBridges;
 }

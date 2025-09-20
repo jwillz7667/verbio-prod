@@ -23,6 +23,7 @@ interface AuthState {
   checkAuth: () => Promise<void>;
   clearError: () => void;
   setUser: (user: User | null) => void;
+  handleOAuthCallback: (accessToken: string, refreshToken: string, user: any) => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -123,6 +124,27 @@ export const useAuthStore = create<AuthState>()(
           user,
           isAuthenticated: !!user,
         });
+      },
+
+      handleOAuthCallback: async (accessToken: string, refreshToken: string, user: any) => {
+        set({ isLoading: true, error: null });
+        try {
+          const response = await api.oauthCallback(accessToken, refreshToken, user);
+          set({
+            user: response.user,
+            isAuthenticated: true,
+            isLoading: false,
+            error: null,
+          });
+        } catch (error) {
+          set({
+            user: null,
+            isAuthenticated: false,
+            isLoading: false,
+            error: error instanceof Error ? error.message : 'OAuth authentication failed',
+          });
+          throw error;
+        }
       },
     }),
     {

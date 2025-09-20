@@ -93,7 +93,7 @@ export const VoiceAgents: React.FC = () => {
       const response = await api.post('/api/calls/initiate', {
         phoneNumber: `+1${phoneNumber}`,
         settings,
-        businessId: user?.business_id
+        businessId: user?.businessId
       });
 
       if (!response.data.success) {
@@ -101,8 +101,12 @@ export const VoiceAgents: React.FC = () => {
       }
 
       // Connect WebSocket for real-time transcription
-      const wsUrl = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8080'}/ws/voice-agent`;
-      ws.current = new WebSocket(`${wsUrl}?callId=${response.data.callId}&businessId=${user?.business_id}`);
+      const baseUrl = import.meta.env.VITE_WS_URL ||
+        (window.location.protocol === 'https:'
+          ? `wss://${window.location.host}`
+          : `ws://${window.location.host}`);
+      const wsUrl = `${baseUrl}/ws/voice-agent`;
+      ws.current = new WebSocket(`${wsUrl}?callId=${response.data.callId}&businessId=${user?.businessId}`);
 
       ws.current.onopen = () => {
         setIsCallActive(true);
@@ -121,7 +125,7 @@ export const VoiceAgents: React.FC = () => {
           }]);
         } else if (data.type === 'call-ended') {
           endCall();
-          toast.info('Call ended');
+          toast('Call ended');
         } else if (data.type === 'error') {
           toast.error(data.message);
           endCall();
