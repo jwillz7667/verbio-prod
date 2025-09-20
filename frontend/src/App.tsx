@@ -22,6 +22,7 @@ const Analytics = lazy(() => import('./pages/Analytics'));
 const Settings = lazy(() => import('./pages/Settings'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
+const VoiceAgents = lazy(() => import('./pages/VoiceAgents'));
 
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -240,6 +241,17 @@ const App: React.FC = () => {
                 <Suspense fallback={<LoadingSpinner />}>
                   <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
                     <Settings />
+                  </motion.div>
+                </Suspense>
+              }
+            />
+
+            <Route
+              path="voice-agents"
+              element={
+                <Suspense fallback={<LoadingSpinner />}>
+                  <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
+                    <VoiceAgents />
                   </motion.div>
                 </Suspense>
               }

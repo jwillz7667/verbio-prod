@@ -43,7 +43,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
 
   const navigation = [
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
-    { name: 'Voice Sessions', href: '/dashboard/sessions', icon: Phone },
+    { name: 'Voice Agents', href: '/dashboard/voice-agents', icon: Phone },
     { name: 'AI Agents', href: '/dashboard/agents', icon: Bot },
     { name: 'Orders', href: '/dashboard/orders', icon: ShoppingCart },
     { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },

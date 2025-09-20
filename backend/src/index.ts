@@ -19,7 +19,9 @@ import ordersRoutes from './routes/orders';
 import twilioRoutes from './routes/twilio';
 import { stripeRoutes } from './routes/stripe';
 import analyticsRoutes from './routes/analytics';
+import callRoutes from './routes/callRoutes';
 import { handleConnection } from './socket/realtimeHandler';
+import { voiceAgentHandler } from './socket/voiceAgentHandler';
 
 const PORT = config.get('PORT');
 const FRONTEND_URL = config.get('FRONTEND_URL');
@@ -149,11 +151,15 @@ app.use('/api/orders', ordersRoutes);
 app.use('/api/twilio', twilioRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/calls', callRoutes);
 
 server.on('upgrade', (request, socket, head) => {
   const pathname = new URL(request.url!, `http://${request.headers.host}`).pathname;
 
-  if (pathname === '/realtime') {
+  if (pathname === '/ws/voice-agent') {
+    // Voice agent WebSocket handled by voiceAgentHandler
+    voiceAgentHandler.setupWebSocket(server);
+  } else if (pathname === '/realtime') {
     const origin = request.headers.origin || '';
     const validOrigins = [
       'https://media.twiliocdn.com',
