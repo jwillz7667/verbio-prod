@@ -17,7 +17,7 @@ interface CallSettings {
   systemPrompt: string;
 }
 
-export const VoiceAgents: React.FC = () => {
+const VoiceAgents: React.FC = () => {
   const { user } = useAuthStore();
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isCallActive, setIsCallActive] = useState(false);
@@ -375,3 +375,5 @@ export const VoiceAgents: React.FC = () => {
     </div>
   );
 };
+
+export default VoiceAgents;

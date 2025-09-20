@@ -11,7 +11,7 @@ const router = Router();
  * Handle OAuth callback from Supabase
  * This endpoint handles the redirect after successful OAuth authentication
  */
-router.post('/callback', asyncHandler(async (req: Request, res: Response) => {
+router.post('/callback', asyncHandler(async (req: Request, res: Response): Promise<Response> => {
   try {
     const { access_token, refresh_token, user } = req.body;
 
@@ -32,7 +32,7 @@ router.post('/callback', asyncHandler(async (req: Request, res: Response) => {
     }
 
     // Check if user exists in our database
-    let { data: existingUser, error: userFetchError } = await supabaseAdmin
+    let { data: existingUser } = await supabaseAdmin
       .from('users')
       .select('id, email')
       .eq('email', email)
@@ -187,7 +187,7 @@ router.post('/callback', asyncHandler(async (req: Request, res: Response) => {
     setAuthCookie(res, token);
 
     // Return user data and token
-    res.json({
+    return res.json({
       success: true,
       token,
       user: {
@@ -203,7 +203,7 @@ router.post('/callback', asyncHandler(async (req: Request, res: Response) => {
 
   } catch (error) {
     logger.error('OAuth callback error', { error });
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: 'OAuth authentication failed'
     });
@@ -213,7 +213,7 @@ router.post('/callback', asyncHandler(async (req: Request, res: Response) => {
 /**
  * Link OAuth account to existing user
  */
-router.post('/link', asyncHandler(async (req: Request, res: Response) => {
+router.post('/link', asyncHandler(async (req: Request, res: Response): Promise<Response> => {
   const { email, password, provider, providerId } = req.body;
 
   if (!email || !password || !provider || !providerId) {
@@ -260,7 +260,7 @@ router.post('/link', asyncHandler(async (req: Request, res: Response) => {
 
   logger.info('OAuth account linked', { userId: user.id, provider });
 
-  res.json({
+  return res.json({
     success: true,
     message: 'OAuth account linked successfully'
   });
@@ -269,7 +269,7 @@ router.post('/link', asyncHandler(async (req: Request, res: Response) => {
 /**
  * Unlink OAuth account
  */
-router.post('/unlink', asyncHandler(async (req: Request, res: Response) => {
+router.post('/unlink', asyncHandler(async (req: Request, res: Response): Promise<Response> => {
   const { userId, provider } = req.body;
 
   if (!userId || !provider) {
@@ -319,7 +319,7 @@ router.post('/unlink', asyncHandler(async (req: Request, res: Response) => {
 
   logger.info('OAuth account unlinked', { userId, provider });
 
-  res.json({
+  return res.json({
     success: true,
     message: 'OAuth account unlinked successfully'
   });
