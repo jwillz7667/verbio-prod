@@ -1,0 +1,84 @@
+# This file specifies files that are *not* uploaded to Google Cloud
+# using gcloud. It follows the same syntax as .gitignore, with the addition of
+# "#!include" directives (which insert the entries of the given .gitignore-style
+# file at that point).
+
+.gcloudignore
+.git
+.gitignore
+
+# Node.js dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Test files
+**/*.test.js
+**/*.test.ts
+**/*.spec.js
+**/*.spec.ts
+__tests__/
+coverage/
+.nyc_output
+
+# Development files
+*.map
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.production
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+
+# Documentation
+README.md
+CONTRIBUTING.md
+CHANGELOG.md
+LICENSE
+docs/
+
+# Frontend (not needed for backend deployment)
+frontend/
+tests/
+
+# Build configs for other environments
+cloudbuild-dev.yaml
+cloudbuild-rollback.yaml
+setup-secrets.sh
+deploy.sh
+verify-deployment.sh
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# Cache
+.cache/
+.parcel-cache/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history

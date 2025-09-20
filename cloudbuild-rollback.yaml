@@ -1,0 +1,105 @@
+# Cloud Build configuration for rolling back to a previous version
+# Usage: gcloud builds submit --config=cloudbuild-rollback.yaml --substitutions=_TARGET_REVISION=<revision-id>
+
+substitutions:
+  _SERVICE_NAME: verbio-backend
+  _REGION: us-central1
+  _TARGET_REVISION: 'PREVIOUS'  # Can be 'PREVIOUS' or a specific revision ID
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # Step 1: Get current revision info
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🔍 Getting current revision information..."
+
+        gcloud run revisions list \
+          --service=${_SERVICE_NAME} \
+          --region=${_REGION} \
+          --format="table(name,traffic,createTime)" \
+          --limit=5
+
+        CURRENT_REVISION=$(gcloud run services describe ${_SERVICE_NAME} \
+          --region=${_REGION} \
+          --format='value(status.latestReadyRevisionName)')
+
+        echo "Current revision: $CURRENT_REVISION"
+    id: 'get-revision-info'
+
+  # Step 2: Rollback to target revision
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "⏮️ Rolling back to revision: ${_TARGET_REVISION}..."
+
+        if [ "${_TARGET_REVISION}" = "PREVIOUS" ]; then
+          # Get the previous revision
+          PREVIOUS_REVISION=$(gcloud run revisions list \
+            --service=${_SERVICE_NAME} \
+            --region=${_REGION} \
+            --format='value(name)' \
+            --limit=2 | tail -n 1)
+
+          echo "Rolling back to previous revision: $PREVIOUS_REVISION"
+
+          gcloud run services update-traffic ${_SERVICE_NAME} \
+            --region=${_REGION} \
+            --to-revisions=$PREVIOUS_REVISION=100
+        else
+          # Rollback to specific revision
+          echo "Rolling back to specific revision: ${_TARGET_REVISION}"
+
+          gcloud run services update-traffic ${_SERVICE_NAME} \
+            --region=${_REGION} \
+            --to-revisions=${_TARGET_REVISION}=100
+        fi
+
+        echo "✅ Rollback completed"
+    id: 'rollback'
+    waitFor: ['get-revision-info']
+
+  # Step 3: Verify rollback
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🧪 Verifying rollback..."
+
+        SERVICE_URL=$(gcloud run services describe ${_SERVICE_NAME} \
+          --region=${_REGION} \
+          --format='value(status.url)')
+
+        # Test health endpoint
+        HEALTH_CHECK=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL/healthz")
+
+        if [ "$HEALTH_CHECK" = "200" ]; then
+          echo "✅ Health check passed after rollback"
+        else
+          echo "❌ Health check failed after rollback with status: $HEALTH_CHECK"
+          exit 1
+        fi
+
+        # Show new traffic allocation
+        echo ""
+        echo "📊 Current traffic allocation:"
+        gcloud run services describe ${_SERVICE_NAME} \
+          --region=${_REGION} \
+          --format='value(status.traffic[].percent,status.traffic[].revisionName)' | \
+          while IFS= read -r line; do
+            echo "  $line"
+          done
+
+        echo ""
+        echo "✅ Rollback verified successfully"
+    id: 'verify-rollback'
+    waitFor: ['rollback']
+
+timeout: '10m'
