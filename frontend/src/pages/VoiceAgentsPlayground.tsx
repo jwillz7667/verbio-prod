@@ -415,21 +415,21 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
   };
 
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100">
+    <div className="min-h-screen bg-gray-50">
       <div className="flex h-screen">
         {/* Left Panel - Configuration */}
-        <div className="w-[400px] bg-gray-900 border-r border-gray-800 flex flex-col">
+        <div className="w-[400px] bg-white border-r border-gray-200 flex flex-col">
           {/* Header */}
-          <div className="px-6 py-4 border-b border-gray-800">
-            <h1 className="text-xl font-semibold flex items-center gap-2">
-              <Zap className="w-5 h-5 text-blue-500" />
-              Voice Agent Playground
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+              <Phone className="w-6 h-6 text-primary-500" />
+              Voice Agents
             </h1>
-            <p className="text-sm text-gray-400 mt-1">OpenAI Realtime API + Twilio</p>
+            <p className="text-sm text-gray-600 mt-1">Test your AI voice agents with real calls</p>
           </div>
 
           {/* Connection Status */}
-          <div className="px-6 py-3 bg-gray-850 border-b border-gray-800">
+          <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className={`w-2 h-2 rounded-full ${
@@ -468,14 +468,14 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
           <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
             {/* Outbound Call Section */}
             <div className="space-y-4">
-              <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Outbound Call</h2>
+              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Outbound Call</h2>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Phone Number
                 </label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm">
                       +1
                     </span>
                     <input
@@ -484,7 +484,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                       onChange={handlePhoneNumberChange}
                       placeholder="(555) 555-5555"
                       disabled={isCallActive || isConnecting}
-                      className="w-full pl-10 pr-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                      className="w-full pl-10 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                     />
                   </div>
                   <button
@@ -518,7 +518,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                 </div>
                 {isCallActive && (
                   <div className="mt-2 flex items-center gap-4">
-                    <span className="text-sm text-gray-400">Duration: {formatDuration(callDuration)}</span>
+                    <span className="text-sm text-gray-600">Duration: {formatDuration(callDuration)}</span>
                   </div>
                 )}
               </div>
@@ -526,17 +526,17 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
 
             {/* Model Configuration */}
             <div className="space-y-4">
-              <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Model</h2>
+              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Model</h2>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Model
                 </label>
                 <select
                   value={config.model}
                   onChange={(e) => setConfig({...config, model: e.target.value})}
                   disabled={sessionActive}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                 >
                   <option value="gpt-4o-realtime-preview-2024-12-17">gpt-4o-realtime-preview-2024-12-17</option>
                   <option value="gpt-4o-realtime-preview">gpt-4o-realtime-preview</option>
@@ -544,14 +544,14 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
                   Voice
                 </label>
                 <select
                   value={config.voice}
                   onChange={(e) => setConfig({...config, voice: e.target.value})}
                   disabled={sessionActive}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                 >
                   <option value="alloy">Alloy</option>
                   <option value="echo">Echo</option>
@@ -565,7 +565,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
 
             {/* Instructions */}
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-300">
+              <label className="block text-sm font-medium text-gray-700">
                 Instructions
               </label>
               <textarea
@@ -573,7 +573,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                 onChange={(e) => setConfig({...config, instructions: e.target.value})}
                 disabled={sessionActive}
                 rows={6}
-                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 resize-none font-mono"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 resize-none font-mono"
               />
             </div>
 
@@ -581,7 +581,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
             <div>
               <button
                 onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center gap-2 text-sm text-gray-400 hover:text-gray-300 transition-colors"
+                className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-600 transition-colors"
               >
                 <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
                 Advanced Settings
@@ -590,7 +590,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
               {showAdvanced && (
                 <div className="mt-4 space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Temperature: {config.temperature}
                     </label>
                     <input
@@ -606,7 +606,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Max Output Tokens
                     </label>
                     <input
@@ -615,19 +615,19 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                       onChange={(e) => setConfig({...config, maxResponseOutputTokens: e.target.value ? parseInt(e.target.value) : 'inf'})}
                       placeholder="Infinite"
                       disabled={sessionActive}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       VAD Mode
                     </label>
                     <select
                       value={config.vadMode}
                       onChange={(e) => setConfig({...config, vadMode: e.target.value as 'server_vad' | 'disabled'})}
                       disabled={sessionActive}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                     >
                       <option value="server_vad">Server VAD</option>
                       <option value="disabled">Disabled</option>
@@ -637,7 +637,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                   {config.vadMode === 'server_vad' && (
                     <>
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           VAD Threshold: {config.turnDetection.serverVad?.threshold}
                         </label>
                         <input
@@ -662,7 +662,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Silence Duration (ms)
                         </label>
                         <input
@@ -679,12 +679,12 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                             }
                           })}
                           disabled={sessionActive}
-                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
                           Prefix Padding (ms)
                         </label>
                         <input
@@ -701,21 +701,21 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                             }
                           })}
                           disabled={sessionActive}
-                          className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                         />
                       </div>
                     </>
                   )}
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
                       Audio Format
                     </label>
                     <select
                       value={config.audioFormat}
                       onChange={(e) => setConfig({...config, audioFormat: e.target.value as 'pcm16' | 'g711_ulaw' | 'g711_alaw'})}
                       disabled={sessionActive}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                     >
                       <option value="pcm16">PCM16</option>
                       <option value="g711_ulaw">G.711 μ-law</option>
@@ -736,9 +736,9 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                         }
                       })}
                       disabled={sessionActive}
-                      className="w-4 h-4 bg-gray-800 border-gray-600 rounded focus:ring-2 focus:ring-blue-500"
+                      className="w-4 h-4 bg-white border-gray-300 rounded focus:ring-2 focus:ring-primary-500"
                     />
-                    <label htmlFor="transcription-enabled" className="text-sm text-gray-300">
+                    <label htmlFor="transcription-enabled" className="text-sm text-gray-700">
                       Enable Input Audio Transcription
                     </label>
                   </div>
@@ -749,7 +749,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
 
           {/* Audio Controls */}
           {(sessionActive || isCallActive) && (
-            <div className="px-6 py-4 border-t border-gray-800">
+            <div className="px-6 py-4 border-t border-gray-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <button
@@ -777,7 +777,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                     {speakerEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
                   </button>
                 </div>
-                <span className="text-xs text-gray-400">
+                <span className="text-xs text-gray-600">
                   {isRecording ? 'Recording...' : 'Ready'}
                 </span>
               </div>
@@ -788,14 +788,14 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
         {/* Right Panel - Content Area */}
         <div className="flex-1 flex flex-col">
           {/* Tab Navigation */}
-          <div className="bg-gray-900 border-b border-gray-800">
+          <div className="bg-white border-b border-gray-200">
             <div className="flex items-center gap-1 px-4 py-2">
               <button
                 onClick={() => setActiveTab('session')}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === 'session'
                     ? 'bg-gray-800 text-white'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+                    : 'text-gray-600 hover:text-white hover:bg-gray-800/50'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -808,7 +808,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === 'transcription'
                     ? 'bg-gray-800 text-white'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+                    : 'text-gray-600 hover:text-white hover:bg-gray-800/50'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -826,7 +826,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === 'events'
                     ? 'bg-gray-800 text-white'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+                    : 'text-gray-600 hover:text-white hover:bg-gray-800/50'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -844,7 +844,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === 'functions'
                     ? 'bg-gray-800 text-white'
-                    : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+                    : 'text-gray-600 hover:text-white hover:bg-gray-800/50'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -856,20 +856,20 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
           </div>
 
           {/* Content Area */}
-          <div className="flex-1 overflow-hidden bg-gray-950">
+          <div className="flex-1 overflow-hidden bg-gray-50">
             {/* Session Tab */}
             {activeTab === 'session' && (
               <div className="h-full overflow-y-auto p-6">
                 <div className="max-w-4xl mx-auto space-y-6">
-                  <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+                  <div className="bg-white rounded-lg border border-gray-200 p-6">
                     <h2 className="text-lg font-semibold mb-4">Current Session Configuration</h2>
-                    <pre className="text-sm text-gray-300 bg-gray-950 rounded-lg p-4 overflow-x-auto">
+                    <pre className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4 overflow-x-auto">
                       {JSON.stringify(config, null, 2)}
                     </pre>
                   </div>
 
                   {sessionActive && (
-                    <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+                    <div className="bg-white rounded-lg border border-gray-200 p-6">
                       <h2 className="text-lg font-semibold mb-4">Session Status</h2>
                       <div className="space-y-2 text-sm">
                         <div className="flex items-center gap-2">
@@ -877,11 +877,11 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                           <span>Session active</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-400">Model:</span>
+                          <span className="text-gray-600">Model:</span>
                           <span>{config.model}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <span className="text-gray-400">Voice:</span>
+                          <span className="text-gray-600">Voice:</span>
                           <span>{config.voice}</span>
                         </div>
                       </div>
@@ -894,7 +894,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
             {/* Transcription Tab */}
             {activeTab === 'transcription' && (
               <div className="h-full flex flex-col">
-                <div className="flex items-center justify-between px-6 py-3 bg-gray-900 border-b border-gray-800">
+                <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
                   <h2 className="text-sm font-semibold">Live Transcription</h2>
                   <div className="flex items-center gap-2">
                     <button
@@ -915,7 +915,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
 
                 <div className="flex-1 overflow-y-auto p-6">
                   {transcription.length === 0 ? (
-                    <div className="text-center text-gray-500 mt-20">
+                    <div className="text-center text-gray-600 mt-20">
                       <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
                       <p>No transcription yet</p>
                       <p className="text-sm mt-2">Start a session to see real-time transcription</p>
@@ -932,8 +932,8 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                               entry.role === 'user'
                                 ? 'bg-blue-600 text-white'
                                 : entry.role === 'system'
-                                ? 'bg-gray-800 text-gray-300'
-                                : 'bg-gray-800 text-gray-100'
+                                ? 'bg-gray-800 text-gray-700'
+                                : 'bg-gray-800 text-gray-900'
                             }`}
                           >
                             <div className="text-xs opacity-75 mb-1 flex items-center gap-2">
@@ -959,7 +959,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
             {/* Events Tab */}
             {activeTab === 'events' && (
               <div className="h-full flex flex-col">
-                <div className="flex items-center justify-between px-6 py-3 bg-gray-900 border-b border-gray-800">
+                <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
                   <h2 className="text-sm font-semibold">Event Log</h2>
                   <div className="flex items-center gap-2">
                     <button
@@ -980,7 +980,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
 
                 <div className="flex-1 overflow-y-auto p-4 font-mono text-xs">
                   {eventLogs.length === 0 ? (
-                    <div className="text-center text-gray-500 mt-20 font-sans text-base">
+                    <div className="text-center text-gray-600 mt-20 font-sans text-base">
                       <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
                       <p>No events logged</p>
                       <p className="text-sm mt-2">Events will appear here when you interact with the system</p>
@@ -996,11 +996,11 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                               : log.type === 'client'
                               ? 'bg-blue-950/50 border-blue-900/50 text-blue-400'
                               : log.type === 'server'
-                              ? 'bg-green-950/50 border-green-900/50 text-green-400'
-                              : 'bg-gray-900/50 border-gray-800 text-gray-400'
+                              ? 'bg-green-50 border-green-200 text-green-700'
+                              : 'bg-white/50 border-gray-200 text-gray-600'
                           }`}
                         >
-                          <span className="text-gray-500">
+                          <span className="text-gray-600">
                             {log.timestamp.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                           </span>
                           <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
@@ -1037,17 +1037,17 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
             {activeTab === 'functions' && (
               <div className="h-full overflow-y-auto p-6">
                 <div className="max-w-4xl mx-auto space-y-6">
-                  <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+                  <div className="bg-white rounded-lg border border-gray-200 p-6">
                     <h2 className="text-lg font-semibold mb-4">Available Functions</h2>
                     {config.tools.length === 0 ? (
-                      <p className="text-gray-400 text-sm">No functions configured. Add functions in the configuration panel.</p>
+                      <p className="text-gray-600 text-sm">No functions configured. Add functions in the configuration panel.</p>
                     ) : (
                       <div className="space-y-4">
                         {config.tools.map((tool, index) => (
-                          <div key={index} className="bg-gray-950 rounded-lg p-4 border border-gray-800">
+                          <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
                             <h3 className="font-medium mb-2">{tool.name}</h3>
-                            <p className="text-sm text-gray-400 mb-2">{tool.description}</p>
-                            <pre className="text-xs text-gray-500 bg-gray-900 rounded p-2 overflow-x-auto">
+                            <p className="text-sm text-gray-600 mb-2">{tool.description}</p>
+                            <pre className="text-xs text-gray-600 bg-white rounded p-2 overflow-x-auto">
                               {JSON.stringify(tool.parameters, null, 2)}
                             </pre>
                           </div>
@@ -1056,7 +1056,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                     )}
                   </div>
 
-                  <div className="bg-gray-900 rounded-lg border border-gray-800 p-6">
+                  <div className="bg-white rounded-lg border border-gray-200 p-6">
                     <h2 className="text-lg font-semibold mb-4">Add Function</h2>
                     <button
                       disabled={sessionActive}

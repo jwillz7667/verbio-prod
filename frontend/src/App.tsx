@@ -251,17 +251,6 @@ const App: React.FC = () => {
               element={
                 <Suspense fallback={<LoadingSpinner />}>
                   <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
-                    <VoiceAgents />
-                  </motion.div>
-                </Suspense>
-              }
-            />
-
-            <Route
-              path="voice-playground"
-              element={
-                <Suspense fallback={<LoadingSpinner />}>
-                  <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
                     <VoiceAgentsPlayground />
                   </motion.div>
                 </Suspense>
