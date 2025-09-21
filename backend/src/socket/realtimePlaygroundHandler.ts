@@ -272,15 +272,11 @@ async function handleSessionUpdate(connection: RealtimeConnection, session: Part
           parameters: tool.parameters
         })),
         tool_choice: connection.config.toolChoice || 'auto',
-        temperature: connection.config.temperature,
         max_response_output_tokens: connection.config.maxResponseOutputTokens === 'inf' ? null : connection.config.maxResponseOutputTokens
       }
     };
 
-    // Add audio buffer size if specified
-    if (connection.config.audioBufferSizeSec) {
-      openaiSession.session.audio_buffer_size_sec = connection.config.audioBufferSizeSec;
-    }
+    // Remove audio_buffer_size_sec - not a valid OpenAI parameter
 
     (connection.openaiService as any).send(openaiSession);
 

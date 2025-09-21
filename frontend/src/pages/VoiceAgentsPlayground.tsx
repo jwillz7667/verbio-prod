@@ -754,12 +754,12 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
 
                   <div>
                     <label className="block text-sm text-gray-600 mb-1">
-                      Temperature: {config.temperature}
+                      Temperature: {config.temperature} (0.6-1.2)
                     </label>
                     <input
                       type="range"
-                      min="0"
-                      max="2"
+                      min="0.6"
+                      max="1.2"
                       step="0.1"
                       value={config.temperature}
                       onChange={(e) => setConfig({ ...config, temperature: parseFloat(e.target.value) })}
@@ -840,6 +840,86 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                         <option value="medium">Medium - Balanced</option>
                         <option value="high">High - Quick to interrupt</option>
                       </select>
+                    </div>
+                  )}
+
+                  {config.vadMode === 'server_vad' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-1">Threshold</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.1"
+                          value={config.turnDetection.serverVad?.threshold || 0.5}
+                          onChange={(e) =>
+                            setConfig({
+                              ...config,
+                              turnDetection: {
+                                ...config.turnDetection,
+                                serverVad: {
+                                  threshold: parseFloat(e.target.value),
+                                  prefixPaddingMs: config.turnDetection.serverVad?.prefixPaddingMs || 300,
+                                  silenceDurationMs: config.turnDetection.serverVad?.silenceDurationMs || 500,
+                                },
+                              },
+                            })
+                          }
+                          disabled={sessionActive}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-1">Prefix Padding (ms)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1000"
+                          step="50"
+                          value={config.turnDetection.serverVad?.prefixPaddingMs || 300}
+                          onChange={(e) =>
+                            setConfig({
+                              ...config,
+                              turnDetection: {
+                                ...config.turnDetection,
+                                serverVad: {
+                                  threshold: config.turnDetection.serverVad?.threshold || 0.5,
+                                  prefixPaddingMs: parseInt(e.target.value),
+                                  silenceDurationMs: config.turnDetection.serverVad?.silenceDurationMs || 500,
+                                },
+                              },
+                            })
+                          }
+                          disabled={sessionActive}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm text-gray-600 mb-1">Silence Duration (ms)</label>
+                        <input
+                          type="number"
+                          min="100"
+                          max="2000"
+                          step="100"
+                          value={config.turnDetection.serverVad?.silenceDurationMs || 500}
+                          onChange={(e) =>
+                            setConfig({
+                              ...config,
+                              turnDetection: {
+                                ...config.turnDetection,
+                                serverVad: {
+                                  threshold: config.turnDetection.serverVad?.threshold || 0.5,
+                                  prefixPaddingMs: config.turnDetection.serverVad?.prefixPaddingMs || 300,
+                                  silenceDurationMs: parseInt(e.target.value),
+                                },
+                              },
+                            })
+                          }
+                          disabled={sessionActive}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
                     </div>
                   )}
 

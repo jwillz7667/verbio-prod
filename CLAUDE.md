@@ -14,7 +14,7 @@ Verbio is a monorepo platform for AI-powered voice agents that handle phone call
 
 ```bash
 # Development
-npm run dev                     # Starts both backend (8080) and frontend (5173)
+npm run dev                     # Starts both backend (8080) and frontend (5173/5174)
 npm run dev:backend            # Backend only with nodemon
 npm run dev:frontend           # Frontend only with Vite
 
@@ -30,14 +30,20 @@ npm run build                  # Build both backend and frontend
 npm run build:backend          # TypeScript compilation to dist/
 npm run build:frontend         # Vite production build
 
-# Linting & Type Checking
+# Linting & Formatting
 npm run lint                   # Lint all workspaces
-npm run type-check:backend     # TypeScript check backend
-npm run type-check:frontend    # TypeScript check frontend
+npm run lint:fix               # Auto-fix linting issues
+npm run format                 # Prettier format all files
 
-# Deployment
-gcloud builds submit --config cloudbuild.yaml  # Deploy backend to Cloud Run
-vercel --prod                                  # Deploy frontend to Vercel
+# Deployment - Backend to Cloud Run
+cd backend
+docker buildx build --platform linux/amd64 -t gcr.io/neural-aquifer-467003-m0/verbio-backend:latest .
+docker push gcr.io/neural-aquifer-467003-m0/verbio-backend:latest
+gcloud run deploy verbio-backend --image gcr.io/neural-aquifer-467003-m0/verbio-backend:latest --region us-central1 --allow-unauthenticated --port 8080 --min-instances 1 --max-instances 100 --memory 1Gi --cpu 1
+
+# Deployment - Frontend to Vercel
+cd frontend
+vercel --prod
 ```
 
 ## Critical Architecture Patterns
@@ -49,12 +55,21 @@ The core real-time communication happens in `/backend/src/socket/realtimeHandler
 3. Audio streams to OpenAI Realtime session
 4. OpenAI responses are converted back to μ-law and sent to Twilio
 
-### OpenAI Realtime Session
-`/backend/src/services/openaiService.ts` manages the OpenAI WebSocket connection:
-- Uses `gpt-realtime` model (not preview)
+### OpenAI Realtime API GA Parameters
+`/backend/src/services/openaiRealtimeService.ts` manages the OpenAI WebSocket connection:
+- Uses `gpt-realtime` model (GA release, not preview)
+- Temperature is NOT a session parameter in GA
+- VAD modes: `server_vad` or `semantic` (not `semantic_vad`)
+- No `audio_buffer_size_sec`, `response_modalities`, or `parallel_tool_calls` parameters
 - Implements exponential backoff retry (max 3 attempts)
-- Handles semantic VAD with configurable eagerness
 - Executes functions for orders/payments via `executeFunction()`
+
+### Voice Agents Playground
+`/backend/src/socket/realtimePlaygroundHandler.ts` provides testing interface:
+- Direct WebSocket connection for OpenAI Realtime testing
+- Supports both semantic and server VAD configurations
+- Recording functionality integrated with Twilio API
+- Session configs must exclude temperature and other deprecated params
 
 ### Authentication Flow
 - JWT tokens with 24-hour expiry stored in localStorage
@@ -79,12 +94,14 @@ supabase.channel('orders-db')
 Required environment variables are split between:
 - `.env.local` - Development configuration
 - `.env.production` - Production with `${VAR}` placeholders for CI/CD
+- `.env.cloudrun.yaml` - Production secrets for Cloud Run deployment
 - Secrets injected via Google Secret Manager (backend) and Vercel env vars (frontend)
 
 Key variables:
 - `OPENAI_API_KEY` - Must have Realtime API access
-- `TWILIO_WEBHOOK_URL` - Set to `https://api.verbio.app/api/twilio/webhook` in production
+- `TWILIO_WEBHOOK_URL` - Set to backend URL for webhook callbacks
 - `STRIPE_WEBHOOK_SECRET` - Unique per Stripe webhook endpoint
+- `BASE_URL` - Backend service URL (https://verbio-backend-995705962018.us-central1.run.app in production)
 
 ## Database Schema
 
@@ -95,33 +112,24 @@ Tables use UUID primary keys with RLS policies:
 - `orders` - Customer orders with items JSONB
 - `payments` - Stripe payment records
 - `call_logs` - Call history and transcripts
+- `call_transcripts` - Real-time conversation transcripts
 
-## Testing Approach
+## Deployment Requirements
 
-- **Backend**: Jest with mocked external services (Supabase, Stripe, Twilio)
-- **Frontend**: Playwright with mocked API responses
-- **E2E**: Full user journey tests in `/tests/e2e/full-flow.spec.ts`
+### Backend Deployment (Google Cloud Run)
+**CRITICAL**: Must build from backend directory, not root:
+1. Always `cd backend` first
+2. Use `docker buildx build --platform linux/amd64` (NOT regular docker build)
+3. Project ID: `neural-aquifer-467003-m0`
+4. Region: `us-central1`
+5. Service name: `verbio-backend`
 
-Mock Twilio events for testing WebSocket handlers:
-```javascript
-const twilioEvent = {
-  event: 'media',
-  media: { payload: 'base64-audio' },
-  streamSid: 'test-stream'
-};
-```
+### Frontend Deployment (Vercel)
+1. Deploy from `/frontend` directory
+2. Environment variables set in Vercel dashboard
+3. Auto-deploys on push to main branch
 
-## Deployment Pipeline
-
-GitHub Actions workflow triggers on push to main:
-1. Runs tests and security scans
-2. Builds Docker image and pushes to GCR
-3. Deploys backend to Cloud Run with secrets from Secret Manager
-4. Deploys frontend to Vercel
-5. Runs integration tests against production
-6. Auto-rollback on failure
-
-## Security Middleware
+## Security Middleware Stack
 
 All requests pass through security layers in order:
 1. `httpsRedirect` - Forces HTTPS in production
@@ -148,3 +156,10 @@ app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 
 The service tracks charge lifecycle: succeeded → refunded with automatic database updates.
 
+## Common TypeScript Issues
+
+When deploying, watch for:
+- Twilio client null checks - Always check `if (!twilioClient)` before use
+- Optional parameters - Use type guards or default values
+- Recording API parameters - `callSid` is not a direct filter parameter
+- OpenAI session types - Temperature is not a valid session parameter
