@@ -272,7 +272,6 @@ async function handleSessionUpdate(connection: RealtimeConnection, session: Part
           parameters: tool.parameters
         })),
         tool_choice: connection.config.toolChoice || 'auto',
-        parallel_tool_calls: connection.config.parallelToolCalls !== false,
         temperature: connection.config.temperature,
         max_response_output_tokens: connection.config.maxResponseOutputTokens === 'inf' ? null : connection.config.maxResponseOutputTokens
       }
