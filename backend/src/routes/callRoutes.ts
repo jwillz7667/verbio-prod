@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import twilio from 'twilio';
 import { voiceAgentHandler } from '../socket/voiceAgentHandler';
 import { authenticate } from '../middleware/auth';
 import { supabaseAdmin } from '../config/supabase';
 import logger from '../utils/logger';
-import twilio from 'twilio';
 
 const router = Router();
 
@@ -49,20 +49,57 @@ router.get('/recordings', authenticate, async (req: Request, res: Response): Pro
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
-    // Fetch recordings from Twilio
-    const recordings = await twilioClient.recordings.list({ limit: 20 });
+    if (!twilioClient) {
+      return res.status(500).json({ success: false, message: 'Twilio not configured' });
+    }
 
-    // Map and format the recordings
-    const formattedRecordings = recordings.map(recording => ({
-      id: recording.sid,
-      callSid: recording.callSid,
-      recordingSid: recording.sid,
-      duration: recording.duration ? parseInt(recording.duration) : 0,
-      url: `https://api.twilio.com${recording.uri.replace('.json', '.mp3')}`,
-      status: recording.status,
-      createdAt: recording.dateCreated,
-      phoneNumber: recording.callSid, // You might want to fetch the actual phone number from the call
-    }));
+    // Fetch recordings from Twilio with business filtering
+    // First get calls for this business from database
+    const { data: callLogs } = await supabaseAdmin
+      .from('call_logs')
+      .select('call_sid')
+      .eq('business_id', businessId)
+      .not('call_sid', 'like', 'pending-%')
+      .order('created_at', { ascending: false })
+      .limit(50);
+
+    if (!callLogs || callLogs.length === 0) {
+      return res.json({ success: true, data: [] });
+    }
+
+    // Fetch recordings for these calls
+    const recordings = await twilioClient.recordings.list({ limit: 100 });
+
+    // Filter recordings to only those belonging to this business
+    const callSids = callLogs.map((log) => log.call_sid);
+    const businessRecordings = recordings.filter((rec) =>
+      callSids.includes(rec.callSid),
+    );
+
+    // Map and format the recordings with proper phone number lookup
+    const formattedRecordings = await Promise.all(
+      businessRecordings.map(async (recording) => {
+        // Get the call details to extract phone number
+        let phoneNumber = 'Unknown';
+        try {
+          const call = await twilioClient.calls(recording.callSid).fetch();
+          phoneNumber = call.direction === 'outbound-api' ? call.to : call.from;
+        } catch (err) {
+          logger.warn(`Could not fetch call details for ${recording.callSid}`);
+        }
+
+        return {
+          id: recording.sid,
+          callSid: recording.callSid,
+          recordingSid: recording.sid,
+          duration: recording.duration ? parseInt(recording.duration, 10) : 0,
+          url: `https://api.twilio.com${recording.uri.replace('.json', '.mp3')}`,
+          status: recording.status as 'processing' | 'completed' | 'failed',
+          createdAt: recording.dateCreated,
+          phoneNumber,
+        };
+      }),
+    );
 
     return res.json({ success: true, data: formattedRecordings });
   } catch (error) {
@@ -80,26 +117,50 @@ router.get('/:callSid/recording', authenticate, async (req: Request, res: Respon
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
-    // Fetch recordings for the specific call
-    const recordings = await twilioClient.recordings.list({
-      callSid: callSid,
-      limit: 1
-    });
+    if (!twilioClient) {
+      return res.status(500).json({ success: false, message: 'Twilio not configured' });
+    }
+
+    // Verify this call belongs to the business
+    const { data: callLog } = await supabaseAdmin
+      .from('call_logs')
+      .select('call_sid')
+      .eq('business_id', businessId)
+      .eq('call_sid', callSid)
+      .single();
+
+    if (!callLog) {
+      return res.status(403).json({ success: false, message: 'Call not found or unauthorized' });
+    }
+
+    // Fetch all recordings and filter by callSid
+    const allRecordings = await twilioClient.recordings.list({ limit: 1000 });
+    const recordings = allRecordings.filter((rec) => rec.callSid === callSid);
 
     if (recordings.length === 0) {
       return res.json({ success: true, data: null });
     }
 
     const recording = recordings[0];
+
+    // Get phone number from call details
+    let phoneNumber = 'Unknown';
+    try {
+      const call = await twilioClient.calls(recording!.callSid).fetch();
+      phoneNumber = call.direction === 'outbound-api' ? call.to : call.from;
+    } catch (err) {
+      logger.warn(`Could not fetch call details for ${recording!.callSid}`);
+    }
+
     const formattedRecording = {
-      id: recording.sid,
-      callSid: recording.callSid,
-      recordingSid: recording.sid,
-      duration: recording.duration ? parseInt(recording.duration) : 0,
-      url: `https://api.twilio.com${recording.uri.replace('.json', '.mp3')}`,
-      status: recording.status,
-      createdAt: recording.dateCreated,
-      phoneNumber: recording.callSid,
+      id: recording!.sid,
+      callSid: recording!.callSid,
+      recordingSid: recording!.sid,
+      duration: recording!.duration ? parseInt(recording!.duration, 10) : 0,
+      url: `https://api.twilio.com${recording!.uri.replace('.json', '.mp3')}`,
+      status: recording!.status as 'processing' | 'completed' | 'failed',
+      createdAt: recording!.dateCreated,
+      phoneNumber,
     };
 
     return res.json({ success: true, data: formattedRecording });
@@ -112,13 +173,13 @@ router.get('/:callSid/recording', authenticate, async (req: Request, res: Respon
 // Recording status webhook
 router.post('/recording-status', async (req: Request, res: Response): Promise<Response> => {
   try {
-    const { RecordingSid, RecordingStatus, CallSid, RecordingUrl, RecordingDuration } = req.body;
+    const { RecordingSid, RecordingStatus, CallSid, RecordingDuration } = req.body;
 
     logger.info('Recording status update:', {
       recordingSid: RecordingSid,
       status: RecordingStatus,
       callSid: CallSid,
-      duration: RecordingDuration
+      duration: RecordingDuration,
     });
 
     // You can store this in a database if needed
@@ -136,8 +197,35 @@ router.delete('/recordings/:recordingSid', authenticate, async (req: Request, re
   try {
     const { recordingSid } = req.params;
     const businessId = (req as any).user?.businessId;
+
     if (!businessId) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    if (!recordingSid) {
+      return res.status(400).json({ success: false, message: 'Recording SID is required' });
+    }
+
+    if (!twilioClient) {
+      return res.status(500).json({ success: false, message: 'Twilio not configured' });
+    }
+
+    // Verify the recording belongs to a call from this business
+    try {
+      const recording = await twilioClient.recordings(recordingSid).fetch();
+
+      const { data: callLog } = await supabaseAdmin
+        .from('call_logs')
+        .select('call_sid')
+        .eq('business_id', businessId)
+        .eq('call_sid', recording.callSid)
+        .single();
+
+      if (!callLog) {
+        return res.status(403).json({ success: false, message: 'Recording not found or unauthorized' });
+      }
+    } catch (err) {
+      return res.status(404).json({ success: false, message: 'Recording not found' });
     }
 
     await twilioClient.recordings(recordingSid).remove();
@@ -157,14 +245,14 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
     if (!phoneNumber || !businessId) {
       return res.status(400).json({
         success: false,
-        message: 'Phone number and business ID are required'
+        message: 'Phone number and business ID are required',
       });
     }
 
     if (!twilioClient) {
       return res.status(500).json({
         success: false,
-        message: 'Twilio not configured'
+        message: 'Twilio not configured',
       });
     }
 
@@ -179,7 +267,7 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
     if (businessError || !business) {
       return res.status(403).json({
         success: false,
-        message: 'Unauthorized to initiate calls for this business'
+        message: 'Unauthorized to initiate calls for this business',
       });
     }
 
@@ -195,7 +283,7 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
     const mergedConfig: SessionConfig = {
       ...config,
       instructions: config.instructions || agent?.prompt || 'You are a helpful AI assistant.',
-      voice: config.voice || agent?.voice_config?.voice || 'alloy'
+      voice: config.voice || agent?.voice_config?.voice || 'alloy',
     };
 
     const callId = uuidv4();
@@ -212,8 +300,8 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
         metadata: {
           config: mergedConfig,
           initiated_by: userId,
-          agent_id: agent?.id
-        }
+          agent_id: agent?.id,
+        },
       })
       .select()
       .single();
@@ -227,12 +315,10 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
     const baseUrl = process.env['BASE_URL'] || `https://${req.get('host')}`;
     const wsUrl = baseUrl.replace('https://', 'wss://').replace('http://', 'ws://');
 
-    const call = await twilioClient.calls.create({
+    const callCreateOptions: any = {
       to: phoneNumber,
       from: process.env['TWILIO_PHONE_NUMBER']!,
       record: recording === true,
-      recordingChannels: recording ? 'dual' : undefined,
-      recordingStatusCallback: recording ? `${process.env['BACKEND_URL']}/api/calls/recording-status` : undefined,
       twiml: `<Response>
         <Connect>
           <Stream url="${wsUrl}/ws/twilio-stream">
@@ -245,8 +331,15 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
       statusCallback: `${baseUrl}/api/calls/twilio/status?callId=${callId}`,
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
       machineDetection: 'DetectMessageEnd',
-      asyncAmd: 'true'
-    });
+      asyncAmd: 'true',
+    };
+
+    if (recording === true) {
+      callCreateOptions.recordingChannels = 'dual';
+      callCreateOptions.recordingStatusCallback = `${baseUrl}/api/calls/recording-status`;
+    }
+
+    const call = await twilioClient.calls.create(callCreateOptions);
 
     // Update call log with Twilio SID
     await supabaseAdmin
@@ -260,14 +353,13 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
       success: true,
       callId,
       callSid: call.sid,
-      status: call.status
+      status: call.status,
     });
-
   } catch (error: any) {
     logger.error('Error initiating outbound call:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Failed to initiate call'
+      message: error.message || 'Failed to initiate call',
     });
   }
 });
@@ -281,7 +373,7 @@ router.post('/initiate', authenticate, async (req: Request, res: Response): Prom
     if (!phoneNumber || !businessId) {
       return res.status(400).json({
         success: false,
-        message: 'Phone number and business ID are required'
+        message: 'Phone number and business ID are required',
       });
     }
 
@@ -296,7 +388,7 @@ router.post('/initiate', authenticate, async (req: Request, res: Response): Prom
     if (businessError || !business) {
       return res.status(403).json({
         success: false,
-        message: 'Unauthorized to initiate calls for this business'
+        message: 'Unauthorized to initiate calls for this business',
       });
     }
 
@@ -305,7 +397,7 @@ router.post('/initiate', authenticate, async (req: Request, res: Response): Prom
     if (!phoneRegex.test(phoneNumber)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid phone number format. Must be +1XXXXXXXXXX'
+        message: 'Invalid phone number format. Must be +1XXXXXXXXXX',
       });
     }
 
@@ -320,7 +412,7 @@ router.post('/initiate', authenticate, async (req: Request, res: Response): Prom
         from_number: 'system',
         to_number: phoneNumber,
         status: 'initiated',
-        metadata: { settings, initiated_by: userId }
+        metadata: { settings, initiated_by: userId },
       });
 
     if (logError) {
@@ -332,7 +424,7 @@ router.post('/initiate', authenticate, async (req: Request, res: Response): Prom
       phoneNumber,
       callId,
       businessId,
-      settings || {}
+      settings || {},
     );
 
     // Update call log with actual call SID
@@ -344,14 +436,13 @@ router.post('/initiate', authenticate, async (req: Request, res: Response): Prom
     return res.json({
       success: true,
       callId,
-      callSid: result.callSid
+      callSid: result.callSid,
     });
-
   } catch (error: any) {
     logger.error('Error initiating call:', error);
     return res.status(500).json({
       success: false,
-      message: error.message || 'Failed to initiate call'
+      message: error.message || 'Failed to initiate call',
     });
   }
 });
@@ -368,7 +459,6 @@ router.post('/twilio/voice-agent-twiml', async (req: Request, res: Response): Pr
     const twiml = voiceAgentHandler.getTwilioResponseForCall(callId as string);
     res.type('text/xml');
     return res.send(twiml);
-
   } catch (error) {
     logger.error('Error generating TwiML:', error);
     return res.status(500).send('Error generating TwiML');
@@ -386,7 +476,7 @@ router.post('/twilio/voice-agent-status', async (req: Request, res: Response) =>
     // Update call status in database
     const updateData: any = {
       status: CallStatus,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
     };
 
     if (CallDuration) {
@@ -416,7 +506,6 @@ router.post('/twilio/voice-agent-status', async (req: Request, res: Response) =>
     }
 
     res.sendStatus(200);
-
   } catch (error) {
     logger.error('Error handling call status:', error);
     res.sendStatus(500);
@@ -433,7 +522,7 @@ router.get('/history', authenticate, async (_req: Request, res: Response): Promi
     if (!businessId) {
       return res.status(400).json({
         success: false,
-        message: 'Business ID is required'
+        message: 'Business ID is required',
       });
     }
 
@@ -448,7 +537,7 @@ router.get('/history', authenticate, async (_req: Request, res: Response): Promi
     if (businessError || !business) {
       return res.status(403).json({
         success: false,
-        message: 'Unauthorized to access this business data'
+        message: 'Unauthorized to access this business data',
       });
     }
 
@@ -500,7 +589,7 @@ router.get('/history', authenticate, async (_req: Request, res: Response): Promi
       logger.error('Error fetching call history:', callsError);
       return res.status(500).json({
         success: false,
-        message: 'Failed to fetch call history'
+        message: 'Failed to fetch call history',
       });
     }
 
@@ -513,9 +602,9 @@ router.get('/history', authenticate, async (_req: Request, res: Response): Promi
 
     const statistics = {
       total: count || 0,
-      completed: stats?.filter(s => s.status === 'completed').length || 0,
-      failed: stats?.filter(s => s.status === 'failed').length || 0,
-      averageDuration: calls?.reduce((acc, call) => acc + (call.duration || 0), 0) / (calls?.length || 1)
+      completed: stats?.filter((s) => s.status === 'completed').length || 0,
+      failed: stats?.filter((s) => s.status === 'failed').length || 0,
+      averageDuration: calls?.reduce((acc, call) => acc + (call.duration || 0), 0) / (calls?.length || 1),
     };
 
     return res.json({
@@ -526,17 +615,16 @@ router.get('/history', authenticate, async (_req: Request, res: Response): Promi
           page,
           limit,
           total: count || 0,
-          pages: Math.ceil((count || 0) / limit)
+          pages: Math.ceil((count || 0) / limit),
         },
-        statistics
-      }
+        statistics,
+      },
     });
-
   } catch (error) {
     logger.error('Error fetching call history:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch call history'
+      message: 'Failed to fetch call history',
     });
   }
 });
@@ -586,7 +674,7 @@ router.get('/history/:callId', authenticate, async (_req: Request, res: Response
     if (callError || !call) {
       return res.status(404).json({
         success: false,
-        message: 'Call not found'
+        message: 'Call not found',
       });
     }
 
@@ -594,7 +682,7 @@ router.get('/history/:callId', authenticate, async (_req: Request, res: Response
     if (call.businesses?.user_id !== userId) {
       return res.status(403).json({
         success: false,
-        message: 'Unauthorized to access this call'
+        message: 'Unauthorized to access this call',
       });
     }
 
@@ -605,14 +693,13 @@ router.get('/history/:callId', authenticate, async (_req: Request, res: Response
 
     return res.json({
       success: true,
-      data: call
+      data: call,
     });
-
   } catch (error) {
     logger.error('Error fetching call details:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch call details'
+      message: 'Failed to fetch call details',
     });
   }
 });
@@ -628,7 +715,7 @@ router.get('/analytics', authenticate, async (_req: Request, res: Response): Pro
     if (!businessId) {
       return res.status(400).json({
         success: false,
-        message: 'Business ID is required'
+        message: 'Business ID is required',
       });
     }
 
@@ -643,7 +730,7 @@ router.get('/analytics', authenticate, async (_req: Request, res: Response): Pro
     if (businessError || !business) {
       return res.status(403).json({
         success: false,
-        message: 'Unauthorized to access this business data'
+        message: 'Unauthorized to access this business data',
       });
     }
 
@@ -678,14 +765,14 @@ router.get('/analytics', authenticate, async (_req: Request, res: Response): Pro
 
     // Calculate analytics
     const totalCalls = calls?.length || 0;
-    const completedCalls = calls?.filter(c => c.status === 'completed').length || 0;
-    const failedCalls = calls?.filter(c => c.status === 'failed').length || 0;
+    const completedCalls = calls?.filter((c) => c.status === 'completed').length || 0;
+    const failedCalls = calls?.filter((c) => c.status === 'failed').length || 0;
     const totalDuration = calls?.reduce((acc, c) => acc + (c.duration || 0), 0) || 0;
     const avgDuration = totalCalls > 0 ? totalDuration / totalCalls : 0;
 
     // Group calls by day for trend data
     const callsByDay: Record<string, number> = {};
-    calls?.forEach(call => {
+    calls?.forEach((call) => {
       const date = new Date(call.created_at).toISOString().split('T')[0];
       if (date) {
         callsByDay[date] = (callsByDay[date] || 0) + 1;
@@ -694,7 +781,7 @@ router.get('/analytics', authenticate, async (_req: Request, res: Response): Pro
 
     // Calculate peak hours
     const callsByHour: Record<number, number> = {};
-    calls?.forEach(call => {
+    calls?.forEach((call) => {
       const hour = new Date(call.created_at).getHours();
       callsByHour[hour] = (callsByHour[hour] || 0) + 1;
     });
@@ -714,29 +801,28 @@ router.get('/analytics', authenticate, async (_req: Request, res: Response): Pro
           failedCalls,
           successRate: Math.round(successRate * 100) / 100,
           avgDuration: Math.round(avgDuration),
-          totalDuration
+          totalDuration,
         },
         trends: {
           daily: Object.entries(callsByDay).map(([date, count]) => ({ date, count })),
           hourly: Object.entries(callsByHour).map(([hour, count]) => ({
             hour: parseInt(hour),
-            count
-          })).sort((a, b) => a.hour - b.hour)
+            count,
+          })).sort((a, b) => a.hour - b.hour),
         },
         insights: {
           peakHour: `${peakHour}:00`,
           busiestDay: Object.entries(callsByDay)
             .sort(([, a], [, b]) => b - a)[0]?.[0] || 'N/A',
-          avgCallsPerDay: Math.round(totalCalls / Math.max(1, Object.keys(callsByDay).length))
-        }
-      }
+          avgCallsPerDay: Math.round(totalCalls / Math.max(1, Object.keys(callsByDay).length)),
+        },
+      },
     });
-
   } catch (error) {
     logger.error('Error fetching call analytics:', error);
     return res.status(500).json({
       success: false,
-      message: 'Failed to fetch call analytics'
+      message: 'Failed to fetch call analytics',
     });
   }
 });
