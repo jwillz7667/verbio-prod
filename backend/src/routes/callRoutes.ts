@@ -41,9 +41,117 @@ const twilioClient = process.env['TWILIO_ACCOUNT_SID'] && process.env['TWILIO_AU
   : null;
 
 // Initiate outbound call with full OpenAI Realtime configuration
+// Get call recordings
+router.get('/recordings', authenticate, async (req: Request, res: Response): Promise<Response> => {
+  try {
+    const businessId = (req as any).user?.businessId;
+    if (!businessId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    // Fetch recordings from Twilio
+    const recordings = await twilioClient.recordings.list({ limit: 20 });
+
+    // Map and format the recordings
+    const formattedRecordings = recordings.map(recording => ({
+      id: recording.sid,
+      callSid: recording.callSid,
+      recordingSid: recording.sid,
+      duration: recording.duration ? parseInt(recording.duration) : 0,
+      url: `https://api.twilio.com${recording.uri.replace('.json', '.mp3')}`,
+      status: recording.status,
+      createdAt: recording.dateCreated,
+      phoneNumber: recording.callSid, // You might want to fetch the actual phone number from the call
+    }));
+
+    return res.json({ success: true, data: formattedRecordings });
+  } catch (error) {
+    logger.error('Failed to fetch recordings:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch recordings' });
+  }
+});
+
+// Get specific call recording
+router.get('/:callSid/recording', authenticate, async (req: Request, res: Response): Promise<Response> => {
+  try {
+    const { callSid } = req.params;
+    const businessId = (req as any).user?.businessId;
+    if (!businessId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    // Fetch recordings for the specific call
+    const recordings = await twilioClient.recordings.list({
+      callSid: callSid,
+      limit: 1
+    });
+
+    if (recordings.length === 0) {
+      return res.json({ success: true, data: null });
+    }
+
+    const recording = recordings[0];
+    const formattedRecording = {
+      id: recording.sid,
+      callSid: recording.callSid,
+      recordingSid: recording.sid,
+      duration: recording.duration ? parseInt(recording.duration) : 0,
+      url: `https://api.twilio.com${recording.uri.replace('.json', '.mp3')}`,
+      status: recording.status,
+      createdAt: recording.dateCreated,
+      phoneNumber: recording.callSid,
+    };
+
+    return res.json({ success: true, data: formattedRecording });
+  } catch (error) {
+    logger.error('Failed to fetch recording:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch recording' });
+  }
+});
+
+// Recording status webhook
+router.post('/recording-status', async (req: Request, res: Response): Promise<Response> => {
+  try {
+    const { RecordingSid, RecordingStatus, CallSid, RecordingUrl, RecordingDuration } = req.body;
+
+    logger.info('Recording status update:', {
+      recordingSid: RecordingSid,
+      status: RecordingStatus,
+      callSid: CallSid,
+      duration: RecordingDuration
+    });
+
+    // You can store this in a database if needed
+    // For now, just log and acknowledge
+
+    return res.status(200).send('OK');
+  } catch (error) {
+    logger.error('Failed to process recording status:', error);
+    return res.status(500).send('Error');
+  }
+});
+
+// Delete recording
+router.delete('/recordings/:recordingSid', authenticate, async (req: Request, res: Response): Promise<Response> => {
+  try {
+    const { recordingSid } = req.params;
+    const businessId = (req as any).user?.businessId;
+    if (!businessId) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    await twilioClient.recordings(recordingSid).remove();
+
+    return res.json({ success: true, message: 'Recording deleted' });
+  } catch (error) {
+    logger.error('Failed to delete recording:', error);
+    return res.status(500).json({ success: false, message: 'Failed to delete recording' });
+  }
+});
+
 router.post('/outbound', authenticate, async (req: Request, res: Response): Promise<Response> => {
   try {
-    const { phoneNumber, config, businessId } = req.body;
+    const { phoneNumber, config, businessId, recording } = req.body;
     const userId = (req as any).user?.userId;
 
     if (!phoneNumber || !businessId) {
@@ -122,6 +230,9 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
     const call = await twilioClient.calls.create({
       to: phoneNumber,
       from: process.env['TWILIO_PHONE_NUMBER']!,
+      record: recording === true,
+      recordingChannels: recording ? 'dual' : undefined,
+      recordingStatusCallback: recording ? `${process.env['BACKEND_URL']}/api/calls/recording-status` : undefined,
       twiml: `<Response>
         <Connect>
           <Stream url="${wsUrl}/ws/twilio-stream">

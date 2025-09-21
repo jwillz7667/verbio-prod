@@ -10,12 +10,19 @@ import {
   Play,
   Square,
   MessageSquare,
-  Zap,
   FileText,
   ChevronDown,
-  CheckCircle,
+  ChevronRight,
   Loader2,
   Download,
+  Eye,
+  EyeOff,
+  Circle,
+  Disc,
+  Headphones,
+  Trash2,
+  Calendar,
+  Clock,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { api } from '../services/api';
@@ -30,11 +37,14 @@ interface SessionConfig {
     model: string;
   };
   turnDetection: {
-    type: 'server_vad' | 'none';
+    type: 'server_vad' | 'semantic_vad' | 'none';
     serverVad?: {
       threshold: number;
       prefixPaddingMs: number;
       silenceDurationMs: number;
+    };
+    semanticVad?: {
+      eagerness: 'low' | 'medium' | 'high';
     };
   };
   tools: Array<{
@@ -44,9 +54,22 @@ interface SessionConfig {
   }>;
   temperature: number;
   maxResponseOutputTokens: number | 'inf';
-  vadMode: 'server_vad' | 'disabled';
+  vadMode: 'server_vad' | 'semantic_vad' | 'disabled';
   modalities: string[];
+  responseModalities: string[];
   audioFormat: 'pcm16' | 'g711_ulaw' | 'g711_alaw';
+  toolChoice: 'auto' | 'none' | 'required' | { type: 'function'; name: string };
+  parallelToolCalls: boolean;
+  audioBufferSizeSec: number;
+  noiseReduction?: {
+    enabled: boolean;
+    strength: 'low' | 'medium' | 'high';
+  };
+  mcpServers?: Array<{
+    url: string;
+    name: string;
+    apiKey?: string;
+  }>;
 }
 
 interface EventLog {
@@ -66,7 +89,18 @@ interface TranscriptionEntry {
   duration?: number;
 }
 
-type TabType = 'session' | 'transcription' | 'events' | 'functions';
+interface Recording {
+  id: string;
+  callSid: string;
+  recordingSid: string;
+  duration: number;
+  url: string;
+  status: 'processing' | 'completed' | 'failed';
+  createdAt: Date;
+  phoneNumber?: string;
+}
+
+type TabType = 'transcription' | 'recordings' | 'events' | 'functions' | 'config';
 
 export const VoiceAgentsPlayground: React.FC = () => {
   const { user } = useAuthStore();
@@ -81,13 +115,16 @@ export const VoiceAgentsPlayground: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [speakerEnabled, setSpeakerEnabled] = useState(true);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingEnabled, setRecordingEnabled] = useState(false);
 
   // UI state
-  const [activeTab, setActiveTab] = useState<TabType>('session');
+  const [activeTab, setActiveTab] = useState<TabType>('transcription');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showJsonConfig, setShowJsonConfig] = useState(false);
 
   // Data state
   const [transcription, setTranscription] = useState<TranscriptionEntry[]>([]);
+  const [recordings, setRecordings] = useState<Recording[]>([]);
   const [eventLogs, setEventLogs] = useState<EventLog[]>([]);
   const [sessionActive, setSessionActive] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>(
@@ -96,8 +133,8 @@ export const VoiceAgentsPlayground: React.FC = () => {
 
   // Configuration
   const [config, setConfig] = useState<SessionConfig>({
-    model: 'gpt-4o-realtime-preview-2024-12-17',
-    voice: 'alloy',
+    model: 'gpt-realtime',
+    voice: 'cedar',
     instructions: `You are a helpful AI assistant on a voice call. Be conversational, friendly, and concise.
 
 Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like a human, but remember that you aren't a human and that you can't do human things in the real world. Your voice and personality should be warm and engaging, with a lively and playful tone. If interacting in a non-English language, start by using the standard accent or dialect familiar to the user.`,
@@ -106,28 +143,40 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
       model: 'whisper-1',
     },
     turnDetection: {
-      type: 'server_vad',
+      type: 'semantic_vad',
       serverVad: {
         threshold: 0.5,
         prefixPaddingMs: 300,
         silenceDurationMs: 500,
       },
+      semanticVad: {
+        eagerness: 'medium',
+      },
     },
     tools: [],
     temperature: 0.8,
     maxResponseOutputTokens: 4096,
-    vadMode: 'server_vad',
+    vadMode: 'semantic_vad',
     modalities: ['text', 'audio'],
+    responseModalities: ['text', 'audio'],
     audioFormat: 'pcm16',
+    toolChoice: 'auto',
+    parallelToolCalls: true,
+    audioBufferSizeSec: 1,
+    noiseReduction: {
+      enabled: true,
+      strength: 'medium',
+    },
+    mcpServers: [],
   });
 
   // Refs
   const ws = useRef<WebSocket | null>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
-  // const audioContext = useRef<AudioContext | null>(null);
   const transcriptionEndRef = useRef<HTMLDivElement>(null);
   const eventLogEndRef = useRef<HTMLDivElement>(null);
   const callTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const recordingPollRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-scroll transcription and events
   useEffect(() => {
@@ -141,6 +190,11 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
       eventLogEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
   }, [eventLogs, activeTab]);
+
+  // Load recordings on mount
+  useEffect(() => {
+    loadRecordings();
+  }, []);
 
   // Call timer
   useEffect(() => {
@@ -161,6 +215,45 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
       }
     };
   }, [isCallActive]);
+
+  const loadRecordings = async () => {
+    try {
+      const response = await api.get('/api/calls/recordings');
+      if (response.data.success) {
+        setRecordings(response.data.data);
+      }
+    } catch (error) {
+      console.error('Failed to load recordings:', error);
+    }
+  };
+
+  const pollRecordingStatus = (callSid: string) => {
+    recordingPollRef.current = setInterval(async () => {
+      try {
+        const response = await api.get(`/api/calls/${callSid}/recording`);
+        if (response.data.success && response.data.data) {
+          const recording = response.data.data;
+          setRecordings((prev) => {
+            const exists = prev.find((r) => r.recordingSid === recording.recordingSid);
+            if (!exists) {
+              return [...prev, recording];
+            }
+            return prev.map((r) =>
+              r.recordingSid === recording.recordingSid ? recording : r
+            );
+          });
+
+          if (recording.status === 'completed' || recording.status === 'failed') {
+            if (recordingPollRef.current) {
+              clearInterval(recordingPollRef.current);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to poll recording status:', error);
+      }
+    }, 5000);
+  };
 
   const formatDuration = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600);
@@ -313,7 +406,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
     }
 
     setIsConnecting(true);
-    addEventLog('info', 'Initiating outbound call', { phoneNumber: `+1${phoneNumber}` });
+    addEventLog('info', 'Initiating outbound call', { phoneNumber: `+1${phoneNumber}`, recording: recordingEnabled });
 
     try {
       // First connect the session if not connected
@@ -327,16 +420,23 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
         phoneNumber: `+1${phoneNumber}`,
         config,
         businessId: user?.businessId,
+        recording: recordingEnabled,
       });
 
       if (!response.data.success) {
         throw new Error(response.data.message || 'Failed to initiate call');
       }
 
+      const callSid = response.data.data?.callSid;
       setIsCallActive(true);
       setIsConnecting(false);
       addEventLog('info', 'Call connected', response.data);
       toast.success('Call connected');
+
+      // If recording is enabled, start polling for recording status
+      if (recordingEnabled && callSid) {
+        pollRecordingStatus(callSid);
+      }
     } catch (error) {
       setIsConnecting(false);
       addEventLog('error', 'Failed to initiate call', error);
@@ -351,6 +451,10 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
     setIsCallActive(false);
     setIsConnecting(false);
     addEventLog('info', 'Call ended');
+
+    if (recordingPollRef.current) {
+      clearInterval(recordingPollRef.current);
+    }
   }, []);
 
   const startRecording = async () => {
@@ -407,6 +511,26 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
     }
   };
 
+  const playRecording = async (recording: Recording) => {
+    try {
+      window.open(recording.url, '_blank');
+    } catch (error) {
+      toast.error('Failed to play recording');
+    }
+  };
+
+  const deleteRecording = async (recordingSid: string) => {
+    try {
+      const response = await api.delete(`/api/calls/recordings/${recordingSid}`);
+      if (response.data.success) {
+        setRecordings((prev) => prev.filter((r) => r.recordingSid !== recordingSid));
+        toast.success('Recording deleted');
+      }
+    } catch (error) {
+      toast.error('Failed to delete recording');
+    }
+  };
+
   const exportTranscription = () => {
     const content = transcription
       .map((entry) => `[${entry.timestamp.toLocaleTimeString()}] ${entry.role.toUpperCase()}: ${entry.content}`)
@@ -433,116 +557,89 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-sm">
-      {/* Page Header */}
-      <div className="px-6 py-4 border-b border-gray-200">
+    <div className="h-screen flex flex-col bg-gray-50">
+      {/* Header */}
+      <div className="bg-white border-b border-gray-200 px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-              <Phone className="w-6 h-6 text-primary-500" />
-              Voice Agents Playground
-            </h1>
+            <h1 className="text-2xl font-bold text-gray-900">Voice Agents Playground</h1>
             <p className="text-sm text-gray-600 mt-1">Test your AI voice agents with real-time calls</p>
           </div>
-          <div className="flex items-center gap-2">
-            <div
-              className={`px-3 py-1 rounded-full text-xs font-medium ${
-                connectionStatus === 'connected'
-                  ? 'bg-green-100 text-green-700'
-                  : connectionStatus === 'connecting'
-                    ? 'bg-yellow-100 text-yellow-700'
+          <div className="flex items-center gap-4">
+            {/* Connection Status */}
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-2 h-2 rounded-full ${
+                  connectionStatus === 'connected'
+                    ? 'bg-green-500 animate-pulse'
+                    : connectionStatus === 'connecting'
+                    ? 'bg-yellow-500 animate-pulse'
                     : connectionStatus === 'error'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-gray-100 text-gray-700'
-              }`}
-            >
-              {connectionStatus === 'connected'
-                ? 'Connected'
-                : connectionStatus === 'connecting'
+                    ? 'bg-red-500'
+                    : 'bg-gray-400'
+                }`}
+              />
+              <span className="text-sm text-gray-600">
+                {connectionStatus === 'connected'
+                  ? 'Connected'
+                  : connectionStatus === 'connecting'
                   ? 'Connecting...'
                   : connectionStatus === 'error'
-                    ? 'Connection Error'
-                    : 'Disconnected'}
+                  ? 'Error'
+                  : 'Disconnected'}
+              </span>
             </div>
+            {/* Connect/Disconnect Button */}
+            {!sessionActive ? (
+              <button
+                onClick={connectSession}
+                disabled={connectionStatus === 'connecting'}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50"
+              >
+                Connect Session
+              </button>
+            ) : (
+              <button
+                onClick={disconnectSession}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                Disconnect
+              </button>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="flex h-[calc(100vh-200px)]">
+      <div className="flex-1 flex overflow-hidden">
         {/* Left Panel - Configuration */}
-        <div className="w-[400px] bg-gray-50 border-r border-gray-200 flex flex-col overflow-y-auto">
-          {/* Connection Controls */}
-          <div className="px-6 py-4 border-b border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-2 h-2 rounded-full ${
-                    connectionStatus === 'connected'
-                      ? 'bg-green-500'
-                      : connectionStatus === 'connecting'
-                        ? 'bg-yellow-500 animate-pulse'
-                        : connectionStatus === 'error'
-                          ? 'bg-red-500'
-                          : 'bg-gray-500'
-                  }`}
-                />
-                <span className="text-sm">
-                  {connectionStatus === 'connected'
-                    ? 'Connected'
-                    : connectionStatus === 'connecting'
-                      ? 'Connecting...'
-                      : connectionStatus === 'error'
-                        ? 'Error'
-                        : 'Disconnected'}
-                </span>
-              </div>
-              {!sessionActive ? (
-                <button
-                  onClick={connectSession}
-                  disabled={connectionStatus === 'connecting'}
-                  className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50"
-                >
-                  Connect
-                </button>
-              ) : (
-                <button
-                  onClick={disconnectSession}
-                  className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
-                >
-                  Disconnect
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* Configuration Form */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-            {/* Outbound Call Section */}
-            <div className="space-y-4">
-              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Outbound Call</h2>
+        <div className="w-96 bg-white border-r border-gray-200 flex flex-col">
+          {/* Call Controls */}
+          <div className="p-4 border-b border-gray-200">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Call Controls</h3>
+            <div className="space-y-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+                <label className="block text-sm text-gray-600 mb-1">Phone Number</label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm">+1</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">+1</span>
                     <input
                       type="text"
                       value={formatPhoneNumber(phoneNumber)}
                       onChange={handlePhoneNumberChange}
                       placeholder="(555) 555-5555"
                       disabled={isCallActive || isConnecting}
-                      className="w-full pl-10 pr-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                     />
                   </div>
                   <button
                     onClick={isCallActive ? endCall : initiateCall}
                     disabled={isConnecting || (!isCallActive && phoneNumber.length !== 10)}
-                    className={`px-4 py-2 rounded-lg font-medium text-sm flex items-center gap-2 transition-colors ${
+                    className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
                       isCallActive
-                        ? 'bg-red-600 hover:bg-red-700'
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
                         : isConnecting
-                          ? 'bg-gray-600 cursor-wait'
-                          : 'bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed'
+                        ? 'bg-gray-400 text-white cursor-wait'
+                        : 'bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-300'
                     }`}
                   >
                     {isCallActive ? (
@@ -563,75 +660,100 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                     )}
                   </button>
                 </div>
+              </div>
+
+              {/* Recording Toggle */}
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={recordingEnabled}
+                    onChange={(e) => setRecordingEnabled(e.target.checked)}
+                    disabled={isCallActive}
+                    className="rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Enable Call Recording</span>
+                </label>
                 {isCallActive && (
-                  <div className="mt-2 flex items-center gap-4">
-                    <span className="text-sm text-gray-600">Duration: {formatDuration(callDuration)}</span>
-                  </div>
+                  <span className="text-sm text-gray-500">
+                    {formatDuration(callDuration)}
+                  </span>
                 )}
               </div>
-            </div>
 
-            {/* Model Configuration */}
+              {/* Audio Controls */}
+              {(sessionActive || isCallActive) && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={isRecording ? stopRecording : startRecording}
+                    className={`p-2 rounded-lg transition-colors ${
+                      isRecording ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-600 hover:bg-gray-700 text-white'
+                    }`}
+                  >
+                    {isRecording ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                  </button>
+                  <button
+                    onClick={toggleMute}
+                    className={`p-2 rounded-lg transition-colors ${
+                      isMuted ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-600 hover:bg-gray-700 text-white'
+                    }`}
+                  >
+                    {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                  </button>
+                  <button
+                    onClick={() => setSpeakerEnabled(!speakerEnabled)}
+                    className={`p-2 rounded-lg transition-colors ${
+                      !speakerEnabled ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-600 hover:bg-gray-700 text-white'
+                    }`}
+                  >
+                    {speakerEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Configuration */}
+          <div className="flex-1 overflow-y-auto p-4">
             <div className="space-y-4">
-              <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Model</h2>
-
+              {/* Model Configuration */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Model</label>
-                <select
-                  value={config.model}
-                  onChange={(e) => setConfig({ ...config, model: e.target.value })}
-                  disabled={sessionActive}
-                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                >
-                  <option value="gpt-4o-realtime-preview-2024-12-17">gpt-4o-realtime-preview-2024-12-17</option>
-                  <option value="gpt-4o-realtime-preview">gpt-4o-realtime-preview</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Voice</label>
-                <select
-                  value={config.voice}
-                  onChange={(e) => setConfig({ ...config, voice: e.target.value })}
-                  disabled={sessionActive}
-                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                >
-                  <option value="alloy">Alloy</option>
-                  <option value="echo">Echo</option>
-                  <option value="fable">Fable</option>
-                  <option value="onyx">Onyx</option>
-                  <option value="nova">Nova</option>
-                  <option value="shimmer">Shimmer</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Instructions */}
-            <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">Instructions</label>
-              <textarea
-                value={config.instructions}
-                onChange={(e) => setConfig({ ...config, instructions: e.target.value })}
-                disabled={sessionActive}
-                rows={6}
-                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 resize-none font-mono"
-              />
-            </div>
-
-            {/* Advanced Settings */}
-            <div>
-              <button
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-600 transition-colors"
-              >
-                <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
-                Advanced Settings
-              </button>
-
-              {showAdvanced && (
-                <div className="mt-4 space-y-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">Model Configuration</h3>
+                <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm text-gray-600 mb-1">Model</label>
+                    <select
+                      value={config.model}
+                      onChange={(e) => setConfig({ ...config, model: e.target.value })}
+                      disabled={sessionActive}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="gpt-realtime">GPT Realtime (Recommended)</option>
+                      <option value="gpt-4o-realtime-preview">GPT-4o Realtime Preview</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Voice</label>
+                    <select
+                      value={config.voice}
+                      onChange={(e) => setConfig({ ...config, voice: e.target.value })}
+                      disabled={sessionActive}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="alloy">Alloy - Neutral</option>
+                      <option value="echo">Echo - Smooth</option>
+                      <option value="fable">Fable - Expressive</option>
+                      <option value="onyx">Onyx - Authoritative</option>
+                      <option value="nova">Nova - Friendly</option>
+                      <option value="shimmer">Shimmer - Warm</option>
+                      <option value="cedar">Cedar - Natural (Recommended)</option>
+                      <option value="marin">Marin - High quality</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">
                       Temperature: {config.temperature}
                     </label>
                     <input
@@ -642,12 +764,87 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                       value={config.temperature}
                       onChange={(e) => setConfig({ ...config, temperature: parseFloat(e.target.value) })}
                       disabled={sessionActive}
-                      className="w-full disabled:opacity-50"
+                      className="w-full"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Instructions */}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Instructions</label>
+                <textarea
+                  value={config.instructions}
+                  onChange={(e) => setConfig({ ...config, instructions: e.target.value })}
+                  disabled={sessionActive}
+                  rows={4}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+
+              {/* Advanced Settings Toggle */}
+              <button
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700"
+              >
+                {showAdvanced ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                Advanced Settings
+              </button>
+
+              {showAdvanced && (
+                <div className="space-y-3 pl-4">
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">VAD Mode</label>
+                    <select
+                      value={config.vadMode}
+                      onChange={(e) => {
+                        const vadMode = e.target.value as 'server_vad' | 'semantic_vad' | 'disabled';
+                        setConfig({
+                          ...config,
+                          vadMode,
+                          turnDetection: {
+                            ...config.turnDetection,
+                            type: vadMode === 'disabled' ? 'none' : vadMode,
+                          }
+                        });
+                      }}
+                      disabled={sessionActive}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="semantic_vad">Semantic VAD (Recommended)</option>
+                      <option value="server_vad">Server VAD</option>
+                      <option value="disabled">Disabled</option>
+                    </select>
+                  </div>
+
+                  {config.vadMode === 'semantic_vad' && (
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Eagerness</label>
+                      <select
+                        value={config.turnDetection.semanticVad?.eagerness || 'medium'}
+                        onChange={(e) =>
+                          setConfig({
+                            ...config,
+                            turnDetection: {
+                              ...config.turnDetection,
+                              semanticVad: {
+                                eagerness: e.target.value as 'low' | 'medium' | 'high',
+                              },
+                            },
+                          })
+                        }
+                        disabled={sessionActive}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="low">Low - Wait longer</option>
+                        <option value="medium">Medium - Balanced</option>
+                        <option value="high">High - Quick to interrupt</option>
+                      </select>
+                    </div>
+                  )}
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Max Output Tokens</label>
+                    <label className="block text-sm text-gray-600 mb-1">Max Output Tokens</label>
                     <input
                       type="number"
                       value={config.maxResponseOutputTokens === 'inf' ? '' : config.maxResponseOutputTokens}
@@ -659,306 +856,109 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                       }
                       placeholder="Infinite"
                       disabled={sessionActive}
-                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">VAD Mode</label>
-                    <select
-                      value={config.vadMode}
-                      onChange={(e) => setConfig({ ...config, vadMode: e.target.value as 'server_vad' | 'disabled' })}
-                      disabled={sessionActive}
-                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                    >
-                      <option value="server_vad">Server VAD</option>
-                      <option value="disabled">Disabled</option>
-                    </select>
-                  </div>
-
-                  {config.vadMode === 'server_vad' && (
-                    <>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          VAD Threshold: {config.turnDetection.serverVad?.threshold}
-                        </label>
-                        <input
-                          type="range"
-                          min="0"
-                          max="1"
-                          step="0.1"
-                          value={config.turnDetection.serverVad?.threshold || 0.5}
-                          onChange={(e) =>
-                            setConfig({
-                              ...config,
-                              turnDetection: {
-                                ...config.turnDetection,
-                                serverVad: {
-                                  ...config.turnDetection.serverVad!,
-                                  threshold: parseFloat(e.target.value),
-                                },
-                              },
-                            })
-                          }
-                          disabled={sessionActive}
-                          className="w-full disabled:opacity-50"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Silence Duration (ms)</label>
-                        <input
-                          type="number"
-                          value={config.turnDetection.serverVad?.silenceDurationMs || 500}
-                          onChange={(e) =>
-                            setConfig({
-                              ...config,
-                              turnDetection: {
-                                ...config.turnDetection,
-                                serverVad: {
-                                  ...config.turnDetection.serverVad!,
-                                  silenceDurationMs: parseInt(e.target.value),
-                                },
-                              },
-                            })
-                          }
-                          disabled={sessionActive}
-                          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Prefix Padding (ms)</label>
-                        <input
-                          type="number"
-                          value={config.turnDetection.serverVad?.prefixPaddingMs || 300}
-                          onChange={(e) =>
-                            setConfig({
-                              ...config,
-                              turnDetection: {
-                                ...config.turnDetection,
-                                serverVad: {
-                                  ...config.turnDetection.serverVad!,
-                                  prefixPaddingMs: parseInt(e.target.value),
-                                },
-                              },
-                            })
-                          }
-                          disabled={sessionActive}
-                          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                        />
-                      </div>
-                    </>
-                  )}
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Audio Format</label>
-                    <select
-                      value={config.audioFormat}
-                      onChange={(e) =>
-                        setConfig({ ...config, audioFormat: e.target.value as 'pcm16' | 'g711_ulaw' | 'g711_alaw' })
-                      }
-                      disabled={sessionActive}
-                      className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
-                    >
-                      <option value="pcm16">PCM16</option>
-                      <option value="g711_ulaw">G.711 μ-law</option>
-                      <option value="g711_alaw">G.711 A-law</option>
-                    </select>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      id="transcription-enabled"
-                      checked={config.inputAudioTranscription.enabled}
-                      onChange={(e) =>
-                        setConfig({
-                          ...config,
-                          inputAudioTranscription: {
-                            ...config.inputAudioTranscription,
-                            enabled: e.target.checked,
-                          },
-                        })
-                      }
-                      disabled={sessionActive}
-                      className="w-4 h-4 bg-white border-gray-300 rounded focus:ring-2 focus:ring-primary-500"
-                    />
-                    <label htmlFor="transcription-enabled" className="text-sm text-gray-700">
-                      Enable Input Audio Transcription
-                    </label>
                   </div>
                 </div>
               )}
             </div>
           </div>
-
-          {/* Audio Controls */}
-          {(sessionActive || isCallActive) && (
-            <div className="px-6 py-4 border-t border-gray-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={isRecording ? stopRecording : startRecording}
-                    className={`p-2 rounded-lg transition-colors ${
-                      isRecording ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-700 hover:bg-gray-600'
-                    }`}
-                  >
-                    {isRecording ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                  </button>
-                  <button
-                    onClick={toggleMute}
-                    className={`p-2 rounded-lg transition-colors ${
-                      isMuted ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-700 hover:bg-gray-600'
-                    }`}
-                  >
-                    {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                  </button>
-                  <button
-                    onClick={() => setSpeakerEnabled(!speakerEnabled)}
-                    className={`p-2 rounded-lg transition-colors ${
-                      !speakerEnabled ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-700 hover:bg-gray-600'
-                    }`}
-                  >
-                    {speakerEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
-                  </button>
-                </div>
-                <span className="text-xs text-gray-600">{isRecording ? 'Recording...' : 'Ready'}</span>
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Right Panel - Content Area */}
-        <div className="flex-1 flex flex-col bg-white">
-          {/* Tab Navigation */}
-          <div className="bg-gray-50 border-b border-gray-200">
-            <div className="flex items-center gap-1 px-4 py-2">
-              <button
-                onClick={() => setActiveTab('session')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'session'
-                    ? 'bg-gray-800 text-white'
-                    : 'text-gray-600 hover:text-white hover:bg-gray-800/50'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Settings className="w-4 h-4" />
-                  Session
-                </div>
-              </button>
+        {/* Right Panel - Content */}
+        <div className="flex-1 flex flex-col">
+          {/* Tabs */}
+          <div className="bg-white border-b border-gray-200 px-4">
+            <div className="flex gap-4">
               <button
                 onClick={() => setActiveTab('transcription')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-4 py-3 border-b-2 transition-colors ${
                   activeTab === 'transcription'
-                    ? 'bg-gray-800 text-white'
-                    : 'text-gray-600 hover:text-white hover:bg-gray-800/50'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-600 hover:text-gray-800'
                 }`}
               >
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-4 h-4" />
                   Transcription
-                  {transcription.length > 0 && (
-                    <span className="px-1.5 py-0.5 bg-blue-600 rounded-full text-xs">{transcription.length}</span>
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('recordings')}
+                className={`px-4 py-3 border-b-2 transition-colors ${
+                  activeTab === 'recordings'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Headphones className="w-4 h-4" />
+                  Recordings
+                  {recordings.length > 0 && (
+                    <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded-full text-xs">
+                      {recordings.length}
+                    </span>
                   )}
                 </div>
               </button>
               <button
                 onClick={() => setActiveTab('events')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-4 py-3 border-b-2 transition-colors ${
                   activeTab === 'events'
-                    ? 'bg-gray-800 text-white'
-                    : 'text-gray-600 hover:text-white hover:bg-gray-800/50'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-600 hover:text-gray-800'
                 }`}
               >
                 <div className="flex items-center gap-2">
                   <FileText className="w-4 h-4" />
                   Events
-                  {eventLogs.length > 0 && (
-                    <span className="px-1.5 py-0.5 bg-blue-600 rounded-full text-xs">{eventLogs.length}</span>
-                  )}
                 </div>
               </button>
               <button
-                onClick={() => setActiveTab('functions')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                  activeTab === 'functions'
-                    ? 'bg-gray-800 text-white'
-                    : 'text-gray-600 hover:text-white hover:bg-gray-800/50'
+                onClick={() => setActiveTab('config')}
+                className={`px-4 py-3 border-b-2 transition-colors ${
+                  activeTab === 'config'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-600 hover:text-gray-800'
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4" />
-                  Functions
+                  <Settings className="w-4 h-4" />
+                  Config
                 </div>
               </button>
             </div>
           </div>
 
-          {/* Content Area */}
+          {/* Tab Content */}
           <div className="flex-1 overflow-hidden bg-gray-50">
-            {/* Session Tab */}
-            {activeTab === 'session' && (
-              <div className="h-full overflow-y-auto p-6">
-                <div className="max-w-4xl mx-auto space-y-6">
-                  <div className="bg-white rounded-lg border border-gray-200 p-6">
-                    <h2 className="text-lg font-semibold mb-4">Current Session Configuration</h2>
-                    <pre className="text-sm text-gray-700 bg-gray-50 rounded-lg p-4 overflow-x-auto">
-                      {JSON.stringify(config, null, 2)}
-                    </pre>
-                  </div>
-
-                  {sessionActive && (
-                    <div className="bg-white rounded-lg border border-gray-200 p-6">
-                      <h2 className="text-lg font-semibold mb-4">Session Status</h2>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center gap-2">
-                          <CheckCircle className="w-4 h-4 text-green-500" />
-                          <span>Session active</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-600">Model:</span>
-                          <span>{config.model}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-600">Voice:</span>
-                          <span>{config.voice}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
             {/* Transcription Tab */}
             {activeTab === 'transcription' && (
               <div className="h-full flex flex-col">
-                <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
-                  <h2 className="text-sm font-semibold">Live Transcription</h2>
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between px-4 py-2 bg-white border-b">
+                  <h3 className="text-sm font-semibold text-gray-700">Live Transcription</h3>
+                  <div className="flex gap-2">
                     <button
                       onClick={() => setTranscription([])}
-                      className="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+                      className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-700 text-white rounded-lg"
                     >
                       Clear
                     </button>
                     <button
                       onClick={exportTranscription}
                       disabled={transcription.length === 0}
-                      className="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:bg-gray-300"
                     >
                       <Download className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-4">
                   {transcription.length === 0 ? (
-                    <div className="text-center text-gray-600 mt-20">
-                      <MessageSquare className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <div className="text-center text-gray-500 mt-20">
+                      <MessageSquare className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                       <p>No transcription yet</p>
-                      <p className="text-sm mt-2">Start a session to see real-time transcription</p>
+                      <p className="text-sm mt-2">Start a call to see real-time transcription</p>
                     </div>
                   ) : (
                     <div className="space-y-4 max-w-4xl mx-auto">
@@ -972,13 +972,13 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                               entry.role === 'user'
                                 ? 'bg-blue-600 text-white'
                                 : entry.role === 'system'
-                                  ? 'bg-gray-800 text-gray-700'
-                                  : 'bg-gray-800 text-gray-900'
+                                ? 'bg-gray-600 text-white'
+                                : 'bg-white border border-gray-200'
                             }`}
                           >
-                            <div className="text-xs opacity-75 mb-1 flex items-center gap-2">
+                            <div className="text-xs opacity-75 mb-1">
                               {entry.role === 'user' ? 'User' : entry.role === 'assistant' ? 'Assistant' : 'System'}
-                              {entry.duration && <span className="text-xs">({entry.duration.toFixed(1)}s)</span>}
+                              {entry.duration && <span> ({entry.duration.toFixed(1)}s)</span>}
                             </div>
                             <div className="whitespace-pre-wrap">{entry.content}</div>
                             <div className="text-xs opacity-50 mt-1">{entry.timestamp.toLocaleTimeString()}</div>
@@ -992,34 +992,125 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
               </div>
             )}
 
+            {/* Recordings Tab */}
+            {activeTab === 'recordings' && (
+              <div className="h-full flex flex-col">
+                <div className="flex items-center justify-between px-4 py-2 bg-white border-b">
+                  <h3 className="text-sm font-semibold text-gray-700">Call Recordings</h3>
+                  <button
+                    onClick={loadRecordings}
+                    className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg"
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4">
+                  {recordings.length === 0 ? (
+                    <div className="text-center text-gray-500 mt-20">
+                      <Headphones className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                      <p>No recordings yet</p>
+                      <p className="text-sm mt-2">Enable recording before making calls</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {recordings.map((recording) => (
+                        <div
+                          key={recording.id}
+                          className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-lg ${
+                                  recording.status === 'completed'
+                                    ? 'bg-green-100'
+                                    : recording.status === 'processing'
+                                    ? 'bg-yellow-100'
+                                    : 'bg-red-100'
+                                }`}>
+                                  {recording.status === 'completed' ? (
+                                    <Disc className="w-4 h-4 text-green-600" />
+                                  ) : recording.status === 'processing' ? (
+                                    <Circle className="w-4 h-4 text-yellow-600 animate-pulse" />
+                                  ) : (
+                                    <Circle className="w-4 h-4 text-red-600" />
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="font-medium">{recording.phoneNumber || 'Unknown Number'}</p>
+                                  <div className="flex items-center gap-4 text-sm text-gray-500">
+                                    <span className="flex items-center gap-1">
+                                      <Calendar className="w-3 h-3" />
+                                      {new Date(recording.createdAt).toLocaleDateString()}
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="w-3 h-3" />
+                                      {formatDuration(recording.duration)}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded-full text-xs ${
+                                      recording.status === 'completed'
+                                        ? 'bg-green-100 text-green-700'
+                                        : recording.status === 'processing'
+                                        ? 'bg-yellow-100 text-yellow-700'
+                                        : 'bg-red-100 text-red-700'
+                                    }`}>
+                                      {recording.status}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {recording.status === 'completed' && (
+                                <button
+                                  onClick={() => playRecording(recording)}
+                                  className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                                >
+                                  <Play className="w-4 h-4" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => deleteRecording(recording.recordingSid)}
+                                className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Events Tab */}
             {activeTab === 'events' && (
               <div className="h-full flex flex-col">
-                <div className="flex items-center justify-between px-6 py-3 bg-white border-b border-gray-200">
-                  <h2 className="text-sm font-semibold">Event Log</h2>
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between px-4 py-2 bg-white border-b">
+                  <h3 className="text-sm font-semibold text-gray-700">Event Log</h3>
+                  <div className="flex gap-2">
                     <button
                       onClick={() => setEventLogs([])}
-                      className="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+                      className="px-3 py-1 text-sm bg-gray-600 hover:bg-gray-700 text-white rounded-lg"
                     >
                       Clear
                     </button>
                     <button
                       onClick={exportEventLogs}
                       disabled={eventLogs.length === 0}
-                      className="px-3 py-1 text-sm bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:bg-gray-300"
                     >
                       <Download className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
-
                 <div className="flex-1 overflow-y-auto p-4 font-mono text-xs">
                   {eventLogs.length === 0 ? (
-                    <div className="text-center text-gray-600 mt-20 font-sans text-base">
-                      <FileText className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                    <div className="text-center text-gray-500 mt-20 font-sans text-base">
+                      <FileText className="w-12 h-12 mx-auto mb-4 text-gray-300" />
                       <p>No events logged</p>
-                      <p className="text-sm mt-2">Events will appear here when you interact with the system</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -1028,31 +1119,26 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                           key={log.id}
                           className={`flex items-start gap-3 p-3 rounded-lg border ${
                             log.type === 'error'
-                              ? 'bg-red-950/50 border-red-900/50 text-red-400'
+                              ? 'bg-red-50 border-red-200 text-red-700'
                               : log.type === 'client'
-                                ? 'bg-blue-950/50 border-blue-900/50 text-blue-400'
-                                : log.type === 'server'
-                                  ? 'bg-green-50 border-green-200 text-green-700'
-                                  : 'bg-white/50 border-gray-200 text-gray-600'
+                              ? 'bg-blue-50 border-blue-200 text-blue-700'
+                              : log.type === 'server'
+                              ? 'bg-green-50 border-green-200 text-green-700'
+                              : 'bg-gray-50 border-gray-200 text-gray-700'
                           }`}
                         >
-                          <span className="text-gray-600">
-                            {log.timestamp.toLocaleTimeString('en-US', {
-                              hour12: false,
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                            })}
+                          <span className="text-gray-500">
+                            {log.timestamp.toLocaleTimeString()}
                           </span>
                           <span
                             className={`px-2 py-0.5 rounded text-xs font-semibold ${
                               log.type === 'error'
-                                ? 'bg-red-900/50'
+                                ? 'bg-red-200'
                                 : log.type === 'client'
-                                  ? 'bg-blue-900/50'
-                                  : log.type === 'server'
-                                    ? 'bg-green-900/50'
-                                    : 'bg-gray-800'
+                                ? 'bg-blue-200'
+                                : log.type === 'server'
+                                ? 'bg-green-200'
+                                : 'bg-gray-200'
                             }`}
                           >
                             {log.type.toUpperCase()}
@@ -1079,39 +1165,54 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
               </div>
             )}
 
-            {/* Functions Tab */}
-            {activeTab === 'functions' && (
-              <div className="h-full overflow-y-auto p-6">
-                <div className="max-w-4xl mx-auto space-y-6">
-                  <div className="bg-white rounded-lg border border-gray-200 p-6">
-                    <h2 className="text-lg font-semibold mb-4">Available Functions</h2>
-                    {config.tools.length === 0 ? (
-                      <p className="text-gray-600 text-sm">
-                        No functions configured. Add functions in the configuration panel.
-                      </p>
-                    ) : (
-                      <div className="space-y-4">
-                        {config.tools.map((tool, index) => (
-                          <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                            <h3 className="font-medium mb-2">{tool.name}</h3>
-                            <p className="text-sm text-gray-600 mb-2">{tool.description}</p>
-                            <pre className="text-xs text-gray-600 bg-white rounded p-2 overflow-x-auto">
-                              {JSON.stringify(tool.parameters, null, 2)}
-                            </pre>
-                          </div>
-                        ))}
+            {/* Config Tab */}
+            {activeTab === 'config' && (
+              <div className="h-full overflow-y-auto p-4">
+                <div className="max-w-4xl mx-auto">
+                  <div className="bg-white rounded-lg border border-gray-200 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h2 className="text-sm font-semibold text-gray-700">Current Session Configuration</h2>
+                      <button
+                        onClick={() => setShowJsonConfig(!showJsonConfig)}
+                        className="flex items-center gap-2 px-3 py-1 text-sm bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+                      >
+                        {showJsonConfig ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        {showJsonConfig ? 'Hide' : 'Show'} JSON
+                      </button>
+                    </div>
+                    {showJsonConfig && (
+                      <pre className="text-xs text-gray-700 bg-gray-50 rounded-lg p-4 overflow-x-auto">
+                        {JSON.stringify(config, null, 2)}
+                      </pre>
+                    )}
+                    {!showJsonConfig && (
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between py-2 border-b">
+                          <span className="text-gray-600">Model:</span>
+                          <span className="font-medium">{config.model}</span>
+                        </div>
+                        <div className="flex justify-between py-2 border-b">
+                          <span className="text-gray-600">Voice:</span>
+                          <span className="font-medium">{config.voice}</span>
+                        </div>
+                        <div className="flex justify-between py-2 border-b">
+                          <span className="text-gray-600">Temperature:</span>
+                          <span className="font-medium">{config.temperature}</span>
+                        </div>
+                        <div className="flex justify-between py-2 border-b">
+                          <span className="text-gray-600">VAD Mode:</span>
+                          <span className="font-medium">{config.vadMode}</span>
+                        </div>
+                        <div className="flex justify-between py-2 border-b">
+                          <span className="text-gray-600">Max Output Tokens:</span>
+                          <span className="font-medium">{config.maxResponseOutputTokens}</span>
+                        </div>
+                        <div className="flex justify-between py-2 border-b">
+                          <span className="text-gray-600">Recording Enabled:</span>
+                          <span className="font-medium">{recordingEnabled ? 'Yes' : 'No'}</span>
+                        </div>
                       </div>
                     )}
-                  </div>
-
-                  <div className="bg-white rounded-lg border border-gray-200 p-6">
-                    <h2 className="text-lg font-semibold mb-4">Add Function</h2>
-                    <button
-                      disabled={sessionActive}
-                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Configure Function Tools
-                    </button>
                   </div>
                 </div>
               </div>
