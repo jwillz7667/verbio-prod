@@ -257,7 +257,7 @@ async function handleSessionUpdate(connection: RealtimeConnection, session: Part
           model: connection.config.inputAudioTranscription.model
         } : undefined,
         turn_detection: connection.config.vadMode === 'semantic_vad' ? {
-          type: 'semantic',
+          type: 'semantic_vad',
           eagerness: (connection.config.turnDetection as any).semanticVad?.eagerness || 'medium'
         } : connection.config.vadMode === 'server_vad' ? {
           type: 'server_vad',

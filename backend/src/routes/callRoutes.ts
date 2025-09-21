@@ -50,9 +50,6 @@ router.get('/recordings', authenticate, async (req: Request, res: Response): Pro
     }
 
     // Fetch recordings from Twilio
-    if (!twilioClient) {
-      throw new Error('Twilio client not configured');
-    }
     const recordings = await twilioClient.recordings.list({ limit: 20 });
 
     // Map and format the recordings
@@ -84,21 +81,16 @@ router.get('/:callSid/recording', authenticate, async (req: Request, res: Respon
     }
 
     // Fetch recordings for the specific call
-    if (!twilioClient) {
-      throw new Error('Twilio client not configured');
-    }
     const recordings = await twilioClient.recordings.list({
+      callSid: callSid,
       limit: 1
     });
 
-    // Filter by callSid manually since it's not a direct parameter
-    const filteredRecordings = recordings.filter(r => r.callSid === callSid);
-
-    if (filteredRecordings.length === 0) {
+    if (recordings.length === 0) {
       return res.json({ success: true, data: null });
     }
 
-    const recording = filteredRecordings[0];
+    const recording = recordings[0];
     const formattedRecording = {
       id: recording.sid,
       callSid: recording.callSid,
@@ -120,7 +112,7 @@ router.get('/:callSid/recording', authenticate, async (req: Request, res: Respon
 // Recording status webhook
 router.post('/recording-status', async (req: Request, res: Response): Promise<Response> => {
   try {
-    const { RecordingSid, RecordingStatus, CallSid, RecordingDuration } = req.body;
+    const { RecordingSid, RecordingStatus, CallSid, RecordingUrl, RecordingDuration } = req.body;
 
     logger.info('Recording status update:', {
       recordingSid: RecordingSid,
@@ -148,9 +140,6 @@ router.delete('/recordings/:recordingSid', authenticate, async (req: Request, re
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
-    if (!twilioClient) {
-      throw new Error('Twilio client not configured');
-    }
     await twilioClient.recordings(recordingSid).remove();
 
     return res.json({ success: true, message: 'Recording deleted' });
@@ -238,14 +227,12 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
     const baseUrl = process.env['BASE_URL'] || `https://${req.get('host')}`;
     const wsUrl = baseUrl.replace('https://', 'wss://').replace('http://', 'ws://');
 
-    if (!twilioClient) {
-      throw new Error('Twilio client not configured');
-    }
-
-    const callOptions: any = {
+    const call = await twilioClient.calls.create({
       to: phoneNumber,
       from: process.env['TWILIO_PHONE_NUMBER']!,
       record: recording === true,
+      recordingChannels: recording ? 'dual' : undefined,
+      recordingStatusCallback: recording ? `${process.env['BACKEND_URL']}/api/calls/recording-status` : undefined,
       twiml: `<Response>
         <Connect>
           <Stream url="${wsUrl}/ws/twilio-stream">
@@ -259,15 +246,7 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
       statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
       machineDetection: 'DetectMessageEnd',
       asyncAmd: 'true'
-    };
-
-    // Add optional recording parameters
-    if (recording === true) {
-      callOptions.recordingChannels = 'dual';
-      callOptions.recordingStatusCallback = `${process.env['BACKEND_URL']}/api/calls/recording-status`;
-    }
-
-    const call = await twilioClient.calls.create(callOptions);
+    });
 
     // Update call log with Twilio SID
     await supabaseAdmin
