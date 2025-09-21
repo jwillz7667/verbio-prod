@@ -1,8 +1,21 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  Phone, PhoneOff, Mic, MicOff, Volume2, VolumeX, Settings,
-  Play, Square, MessageSquare, Zap, FileText, ChevronDown,
-  CheckCircle, Loader2, Download
+  Phone,
+  PhoneOff,
+  Mic,
+  MicOff,
+  Volume2,
+  VolumeX,
+  Settings,
+  Play,
+  Square,
+  MessageSquare,
+  Zap,
+  FileText,
+  ChevronDown,
+  CheckCircle,
+  Loader2,
+  Download,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { api } from '../services/api';
@@ -77,7 +90,9 @@ export const VoiceAgentsPlayground: React.FC = () => {
   const [transcription, setTranscription] = useState<TranscriptionEntry[]>([]);
   const [eventLogs, setEventLogs] = useState<EventLog[]>([]);
   const [sessionActive, setSessionActive] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>('disconnected');
+  const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'error'>(
+    'disconnected'
+  );
 
   // Configuration
   const [config, setConfig] = useState<SessionConfig>({
@@ -88,22 +103,22 @@ export const VoiceAgentsPlayground: React.FC = () => {
 Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like a human, but remember that you aren't a human and that you can't do human things in the real world. Your voice and personality should be warm and engaging, with a lively and playful tone. If interacting in a non-English language, start by using the standard accent or dialect familiar to the user.`,
     inputAudioTranscription: {
       enabled: true,
-      model: 'whisper-1'
+      model: 'whisper-1',
     },
     turnDetection: {
       type: 'server_vad',
       serverVad: {
         threshold: 0.5,
         prefixPaddingMs: 300,
-        silenceDurationMs: 500
-      }
+        silenceDurationMs: 500,
+      },
     },
     tools: [],
     temperature: 0.8,
     maxResponseOutputTokens: 4096,
     vadMode: 'server_vad',
     modalities: ['text', 'audio'],
-    audioFormat: 'pcm16'
+    audioFormat: 'pcm16',
   });
 
   // Refs
@@ -131,7 +146,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
   useEffect(() => {
     if (isCallActive) {
       callTimerRef.current = setInterval(() => {
-        setCallDuration(prev => prev + 1);
+        setCallDuration((prev) => prev + 1);
       }, 1000);
     } else {
       if (callTimerRef.current) {
@@ -178,9 +193,9 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
       type,
       event,
       timestamp: new Date(),
-      data
+      data,
     };
-    setEventLogs(prev => [...prev, newEvent]);
+    setEventLogs((prev) => [...prev, newEvent]);
   };
 
   const connectSession = async () => {
@@ -188,15 +203,14 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
     addEventLog('info', 'Initiating session connection', { config });
 
     try {
-      const baseUrl = import.meta.env.VITE_WS_URL ||
-        (window.location.protocol === 'https:'
-          ? `wss://${window.location.host}`
-          : `ws://${window.location.host}`);
+      const baseUrl =
+        import.meta.env.VITE_WS_URL ||
+        (window.location.protocol === 'https:' ? `wss://${window.location.host}` : `ws://${window.location.host}`);
       const wsUrl = `${baseUrl}/ws/realtime`;
       const queryParams = new URLSearchParams({
         businessId: user?.businessId || '',
         model: config.model,
-        voice: config.voice
+        voice: config.voice,
       });
 
       ws.current = new WebSocket(`${wsUrl}?${queryParams}`);
@@ -207,13 +221,15 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
         addEventLog('info', 'WebSocket connected');
 
         // Send session configuration
-        ws.current?.send(JSON.stringify({
-          type: 'session.update',
-          session: {
-            ...config,
-            tools: config.tools.length > 0 ? config.tools : undefined
-          }
-        }));
+        ws.current?.send(
+          JSON.stringify({
+            type: 'session.update',
+            session: {
+              ...config,
+              tools: config.tools.length > 0 ? config.tools : undefined,
+            },
+          })
+        );
       };
 
       ws.current.onmessage = (event) => {
@@ -234,21 +250,21 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                 content: data.item.content[0]?.text || data.item.content[0]?.transcript || '',
                 timestamp: new Date(),
                 audioData: data.item.content[0]?.audio,
-                duration: data.item.content[0]?.duration
+                duration: data.item.content[0]?.duration,
               };
-              setTranscription(prev => [...prev, entry]);
+              setTranscription((prev) => [...prev, entry]);
             }
             break;
 
           case 'response.audio_transcript.delta':
             // Update last assistant message with streaming transcript
-            setTranscription(prev => {
+            setTranscription((prev) => {
               const newTrans = [...prev];
               const lastIndex = newTrans.findLastIndex((t: TranscriptionEntry) => t.role === 'assistant');
               if (lastIndex >= 0) {
                 newTrans[lastIndex] = {
                   ...newTrans[lastIndex],
-                  content: newTrans[lastIndex].content + data.delta
+                  content: newTrans[lastIndex].content + data.delta,
                 };
               }
               return newTrans;
@@ -273,7 +289,6 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
         setSessionActive(false);
         addEventLog('info', 'WebSocket disconnected');
       };
-
     } catch (error) {
       setConnectionStatus('error');
       addEventLog('error', 'Failed to connect', error);
@@ -304,14 +319,14 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
       // First connect the session if not connected
       if (!sessionActive) {
         await connectSession();
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for session
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait for session
       }
 
       // Initiate the call
       const response = await api.post('/api/calls/outbound', {
         phoneNumber: `+1${phoneNumber}`,
         config,
-        businessId: user?.businessId
+        businessId: user?.businessId,
       });
 
       if (!response.data.success) {
@@ -322,7 +337,6 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
       setIsConnecting(false);
       addEventLog('info', 'Call connected', response.data);
       toast.success('Call connected');
-
     } catch (error) {
       setIsConnecting(false);
       addEventLog('error', 'Failed to initiate call', error);
@@ -350,10 +364,12 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
           const reader = new FileReader();
           reader.onloadend = () => {
             const base64 = reader.result?.toString().split(',')[1];
-            ws.current?.send(JSON.stringify({
-              type: 'input_audio_buffer.append',
-              audio: base64
-            }));
+            ws.current?.send(
+              JSON.stringify({
+                type: 'input_audio_buffer.append',
+                audio: base64,
+              })
+            );
           };
           reader.readAsDataURL(event.data);
         }
@@ -371,7 +387,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
   const stopRecording = () => {
     if (mediaRecorder.current) {
       mediaRecorder.current.stop();
-      mediaRecorder.current.stream.getTracks().forEach(track => track.stop());
+      mediaRecorder.current.stream.getTracks().forEach((track) => track.stop());
       mediaRecorder.current = null;
     }
     setIsRecording(false);
@@ -381,18 +397,20 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
   const toggleMute = () => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       const newMuteState = !isMuted;
-      ws.current.send(JSON.stringify({
-        type: 'input_audio_buffer.clear'
-      }));
+      ws.current.send(
+        JSON.stringify({
+          type: 'input_audio_buffer.clear',
+        })
+      );
       setIsMuted(newMuteState);
       addEventLog('info', newMuteState ? 'Muted' : 'Unmuted');
     }
   };
 
   const exportTranscription = () => {
-    const content = transcription.map(entry =>
-      `[${entry.timestamp.toLocaleTimeString()}] ${entry.role.toUpperCase()}: ${entry.content}`
-    ).join('\n\n');
+    const content = transcription
+      .map((entry) => `[${entry.timestamp.toLocaleTimeString()}] ${entry.role.toUpperCase()}: ${entry.content}`)
+      .join('\n\n');
 
     const blob = new Blob([content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -415,34 +433,67 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="flex h-screen">
-        {/* Left Panel - Configuration */}
-        <div className="w-[400px] bg-white border-r border-gray-200 flex flex-col">
-          {/* Header */}
-          <div className="px-6 py-4 border-b border-gray-200">
+    <div className="bg-white rounded-lg shadow-sm">
+      {/* Page Header */}
+      <div className="px-6 py-4 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <div>
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
               <Phone className="w-6 h-6 text-primary-500" />
-              Voice Agents
+              Voice Agents Playground
             </h1>
-            <p className="text-sm text-gray-600 mt-1">Test your AI voice agents with real calls</p>
+            <p className="text-sm text-gray-600 mt-1">Test your AI voice agents with real-time calls</p>
           </div>
+          <div className="flex items-center gap-2">
+            <div
+              className={`px-3 py-1 rounded-full text-xs font-medium ${
+                connectionStatus === 'connected'
+                  ? 'bg-green-100 text-green-700'
+                  : connectionStatus === 'connecting'
+                    ? 'bg-yellow-100 text-yellow-700'
+                    : connectionStatus === 'error'
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-gray-100 text-gray-700'
+              }`}
+            >
+              {connectionStatus === 'connected'
+                ? 'Connected'
+                : connectionStatus === 'connecting'
+                  ? 'Connecting...'
+                  : connectionStatus === 'error'
+                    ? 'Connection Error'
+                    : 'Disconnected'}
+            </div>
+          </div>
+        </div>
+      </div>
 
-          {/* Connection Status */}
-          <div className="px-6 py-3 bg-gray-50 border-b border-gray-200">
+      <div className="flex h-[calc(100vh-200px)]">
+        {/* Left Panel - Configuration */}
+        <div className="w-[400px] bg-gray-50 border-r border-gray-200 flex flex-col overflow-y-auto">
+          {/* Connection Controls */}
+          <div className="px-6 py-4 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${
-                  connectionStatus === 'connected' ? 'bg-green-500' :
-                  connectionStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' :
-                  connectionStatus === 'error' ? 'bg-red-500' :
-                  'bg-gray-500'
-                }`} />
+                <div
+                  className={`w-2 h-2 rounded-full ${
+                    connectionStatus === 'connected'
+                      ? 'bg-green-500'
+                      : connectionStatus === 'connecting'
+                        ? 'bg-yellow-500 animate-pulse'
+                        : connectionStatus === 'error'
+                          ? 'bg-red-500'
+                          : 'bg-gray-500'
+                  }`}
+                />
                 <span className="text-sm">
-                  {connectionStatus === 'connected' ? 'Connected' :
-                   connectionStatus === 'connecting' ? 'Connecting...' :
-                   connectionStatus === 'error' ? 'Error' :
-                   'Disconnected'}
+                  {connectionStatus === 'connected'
+                    ? 'Connected'
+                    : connectionStatus === 'connecting'
+                      ? 'Connecting...'
+                      : connectionStatus === 'error'
+                        ? 'Error'
+                        : 'Disconnected'}
                 </span>
               </div>
               {!sessionActive ? (
@@ -470,14 +521,10 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
             <div className="space-y-4">
               <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Outbound Call</h2>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Phone Number
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
                 <div className="flex gap-2">
                   <div className="relative flex-1">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm">
-                      +1
-                    </span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm">+1</span>
                     <input
                       type="text"
                       value={formatPhoneNumber(phoneNumber)}
@@ -494,8 +541,8 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                       isCallActive
                         ? 'bg-red-600 hover:bg-red-700'
                         : isConnecting
-                        ? 'bg-gray-600 cursor-wait'
-                        : 'bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed'
+                          ? 'bg-gray-600 cursor-wait'
+                          : 'bg-green-600 hover:bg-green-700 disabled:bg-gray-700 disabled:cursor-not-allowed'
                     }`}
                   >
                     {isCallActive ? (
@@ -529,12 +576,10 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
               <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wider">Model</h2>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Model
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Model</label>
                 <select
                   value={config.model}
-                  onChange={(e) => setConfig({...config, model: e.target.value})}
+                  onChange={(e) => setConfig({ ...config, model: e.target.value })}
                   disabled={sessionActive}
                   className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                 >
@@ -544,12 +589,10 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Voice
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Voice</label>
                 <select
                   value={config.voice}
-                  onChange={(e) => setConfig({...config, voice: e.target.value})}
+                  onChange={(e) => setConfig({ ...config, voice: e.target.value })}
                   disabled={sessionActive}
                   className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                 >
@@ -565,12 +608,10 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
 
             {/* Instructions */}
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-gray-700">
-                Instructions
-              </label>
+              <label className="block text-sm font-medium text-gray-700">Instructions</label>
               <textarea
                 value={config.instructions}
-                onChange={(e) => setConfig({...config, instructions: e.target.value})}
+                onChange={(e) => setConfig({ ...config, instructions: e.target.value })}
                 disabled={sessionActive}
                 rows={6}
                 className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50 resize-none font-mono"
@@ -599,20 +640,23 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                       max="2"
                       step="0.1"
                       value={config.temperature}
-                      onChange={(e) => setConfig({...config, temperature: parseFloat(e.target.value)})}
+                      onChange={(e) => setConfig({ ...config, temperature: parseFloat(e.target.value) })}
                       disabled={sessionActive}
                       className="w-full disabled:opacity-50"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Max Output Tokens
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Max Output Tokens</label>
                     <input
                       type="number"
                       value={config.maxResponseOutputTokens === 'inf' ? '' : config.maxResponseOutputTokens}
-                      onChange={(e) => setConfig({...config, maxResponseOutputTokens: e.target.value ? parseInt(e.target.value) : 'inf'})}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          maxResponseOutputTokens: e.target.value ? parseInt(e.target.value) : 'inf',
+                        })
+                      }
                       placeholder="Infinite"
                       disabled={sessionActive}
                       className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
@@ -620,12 +664,10 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      VAD Mode
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">VAD Mode</label>
                     <select
                       value={config.vadMode}
-                      onChange={(e) => setConfig({...config, vadMode: e.target.value as 'server_vad' | 'disabled'})}
+                      onChange={(e) => setConfig({ ...config, vadMode: e.target.value as 'server_vad' | 'disabled' })}
                       disabled={sessionActive}
                       className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                     >
@@ -646,60 +688,62 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                           max="1"
                           step="0.1"
                           value={config.turnDetection.serverVad?.threshold || 0.5}
-                          onChange={(e) => setConfig({
-                            ...config,
-                            turnDetection: {
-                              ...config.turnDetection,
-                              serverVad: {
-                                ...config.turnDetection.serverVad!,
-                                threshold: parseFloat(e.target.value)
-                              }
-                            }
-                          })}
+                          onChange={(e) =>
+                            setConfig({
+                              ...config,
+                              turnDetection: {
+                                ...config.turnDetection,
+                                serverVad: {
+                                  ...config.turnDetection.serverVad!,
+                                  threshold: parseFloat(e.target.value),
+                                },
+                              },
+                            })
+                          }
                           disabled={sessionActive}
                           className="w-full disabled:opacity-50"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Silence Duration (ms)
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Silence Duration (ms)</label>
                         <input
                           type="number"
                           value={config.turnDetection.serverVad?.silenceDurationMs || 500}
-                          onChange={(e) => setConfig({
-                            ...config,
-                            turnDetection: {
-                              ...config.turnDetection,
-                              serverVad: {
-                                ...config.turnDetection.serverVad!,
-                                silenceDurationMs: parseInt(e.target.value)
-                              }
-                            }
-                          })}
+                          onChange={(e) =>
+                            setConfig({
+                              ...config,
+                              turnDetection: {
+                                ...config.turnDetection,
+                                serverVad: {
+                                  ...config.turnDetection.serverVad!,
+                                  silenceDurationMs: parseInt(e.target.value),
+                                },
+                              },
+                            })
+                          }
                           disabled={sessionActive}
                           className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                         />
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Prefix Padding (ms)
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Prefix Padding (ms)</label>
                         <input
                           type="number"
                           value={config.turnDetection.serverVad?.prefixPaddingMs || 300}
-                          onChange={(e) => setConfig({
-                            ...config,
-                            turnDetection: {
-                              ...config.turnDetection,
-                              serverVad: {
-                                ...config.turnDetection.serverVad!,
-                                prefixPaddingMs: parseInt(e.target.value)
-                              }
-                            }
-                          })}
+                          onChange={(e) =>
+                            setConfig({
+                              ...config,
+                              turnDetection: {
+                                ...config.turnDetection,
+                                serverVad: {
+                                  ...config.turnDetection.serverVad!,
+                                  prefixPaddingMs: parseInt(e.target.value),
+                                },
+                              },
+                            })
+                          }
                           disabled={sessionActive}
                           className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                         />
@@ -708,12 +752,12 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                   )}
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Audio Format
-                    </label>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Audio Format</label>
                     <select
                       value={config.audioFormat}
-                      onChange={(e) => setConfig({...config, audioFormat: e.target.value as 'pcm16' | 'g711_ulaw' | 'g711_alaw'})}
+                      onChange={(e) =>
+                        setConfig({ ...config, audioFormat: e.target.value as 'pcm16' | 'g711_ulaw' | 'g711_alaw' })
+                      }
                       disabled={sessionActive}
                       className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                     >
@@ -728,13 +772,15 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                       type="checkbox"
                       id="transcription-enabled"
                       checked={config.inputAudioTranscription.enabled}
-                      onChange={(e) => setConfig({
-                        ...config,
-                        inputAudioTranscription: {
-                          ...config.inputAudioTranscription,
-                          enabled: e.target.checked
-                        }
-                      })}
+                      onChange={(e) =>
+                        setConfig({
+                          ...config,
+                          inputAudioTranscription: {
+                            ...config.inputAudioTranscription,
+                            enabled: e.target.checked,
+                          },
+                        })
+                      }
                       disabled={sessionActive}
                       className="w-4 h-4 bg-white border-gray-300 rounded focus:ring-2 focus:ring-primary-500"
                     />
@@ -777,18 +823,16 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                     {speakerEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
                   </button>
                 </div>
-                <span className="text-xs text-gray-600">
-                  {isRecording ? 'Recording...' : 'Ready'}
-                </span>
+                <span className="text-xs text-gray-600">{isRecording ? 'Recording...' : 'Ready'}</span>
               </div>
             </div>
           )}
         </div>
 
         {/* Right Panel - Content Area */}
-        <div className="flex-1 flex flex-col">
+        <div className="flex-1 flex flex-col bg-white">
           {/* Tab Navigation */}
-          <div className="bg-white border-b border-gray-200">
+          <div className="bg-gray-50 border-b border-gray-200">
             <div className="flex items-center gap-1 px-4 py-2">
               <button
                 onClick={() => setActiveTab('session')}
@@ -815,9 +859,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                   <MessageSquare className="w-4 h-4" />
                   Transcription
                   {transcription.length > 0 && (
-                    <span className="px-1.5 py-0.5 bg-blue-600 rounded-full text-xs">
-                      {transcription.length}
-                    </span>
+                    <span className="px-1.5 py-0.5 bg-blue-600 rounded-full text-xs">{transcription.length}</span>
                   )}
                 </div>
               </button>
@@ -833,9 +875,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                   <FileText className="w-4 h-4" />
                   Events
                   {eventLogs.length > 0 && (
-                    <span className="px-1.5 py-0.5 bg-blue-600 rounded-full text-xs">
-                      {eventLogs.length}
-                    </span>
+                    <span className="px-1.5 py-0.5 bg-blue-600 rounded-full text-xs">{eventLogs.length}</span>
                   )}
                 </div>
               </button>
@@ -932,20 +972,16 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                               entry.role === 'user'
                                 ? 'bg-blue-600 text-white'
                                 : entry.role === 'system'
-                                ? 'bg-gray-800 text-gray-700'
-                                : 'bg-gray-800 text-gray-900'
+                                  ? 'bg-gray-800 text-gray-700'
+                                  : 'bg-gray-800 text-gray-900'
                             }`}
                           >
                             <div className="text-xs opacity-75 mb-1 flex items-center gap-2">
                               {entry.role === 'user' ? 'User' : entry.role === 'assistant' ? 'Assistant' : 'System'}
-                              {entry.duration && (
-                                <span className="text-xs">({entry.duration.toFixed(1)}s)</span>
-                              )}
+                              {entry.duration && <span className="text-xs">({entry.duration.toFixed(1)}s)</span>}
                             </div>
                             <div className="whitespace-pre-wrap">{entry.content}</div>
-                            <div className="text-xs opacity-50 mt-1">
-                              {entry.timestamp.toLocaleTimeString()}
-                            </div>
+                            <div className="text-xs opacity-50 mt-1">{entry.timestamp.toLocaleTimeString()}</div>
                           </div>
                         </div>
                       ))}
@@ -994,21 +1030,31 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                             log.type === 'error'
                               ? 'bg-red-950/50 border-red-900/50 text-red-400'
                               : log.type === 'client'
-                              ? 'bg-blue-950/50 border-blue-900/50 text-blue-400'
-                              : log.type === 'server'
-                              ? 'bg-green-50 border-green-200 text-green-700'
-                              : 'bg-white/50 border-gray-200 text-gray-600'
+                                ? 'bg-blue-950/50 border-blue-900/50 text-blue-400'
+                                : log.type === 'server'
+                                  ? 'bg-green-50 border-green-200 text-green-700'
+                                  : 'bg-white/50 border-gray-200 text-gray-600'
                           }`}
                         >
                           <span className="text-gray-600">
-                            {log.timestamp.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            {log.timestamp.toLocaleTimeString('en-US', {
+                              hour12: false,
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            })}
                           </span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                            log.type === 'error' ? 'bg-red-900/50' :
-                            log.type === 'client' ? 'bg-blue-900/50' :
-                            log.type === 'server' ? 'bg-green-900/50' :
-                            'bg-gray-800'
-                          }`}>
+                          <span
+                            className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                              log.type === 'error'
+                                ? 'bg-red-900/50'
+                                : log.type === 'client'
+                                  ? 'bg-blue-900/50'
+                                  : log.type === 'server'
+                                    ? 'bg-green-900/50'
+                                    : 'bg-gray-800'
+                            }`}
+                          >
                             {log.type.toUpperCase()}
                           </span>
                           <div className="flex-1">
@@ -1040,7 +1086,9 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                   <div className="bg-white rounded-lg border border-gray-200 p-6">
                     <h2 className="text-lg font-semibold mb-4">Available Functions</h2>
                     {config.tools.length === 0 ? (
-                      <p className="text-gray-600 text-sm">No functions configured. Add functions in the configuration panel.</p>
+                      <p className="text-gray-600 text-sm">
+                        No functions configured. Add functions in the configuration panel.
+                      </p>
                     ) : (
                       <div className="space-y-4">
                         {config.tools.map((tool, index) => (
