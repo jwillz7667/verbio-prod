@@ -17,11 +17,14 @@ interface SessionConfig {
     model: string;
   };
   turnDetection: {
-    type: 'server_vad' | 'none';
+    type: 'server_vad' | 'semantic_vad' | 'none';
     serverVad?: {
       threshold: number;
       prefixPaddingMs: number;
       silenceDurationMs: number;
+    };
+    semanticVad?: {
+      eagerness: 'low' | 'medium' | 'high';
     };
   };
   tools?: Array<{
@@ -32,9 +35,22 @@ interface SessionConfig {
   }>;
   temperature: number;
   maxResponseOutputTokens: number | 'inf';
-  vadMode: 'server_vad' | 'disabled';
+  vadMode: 'server_vad' | 'semantic_vad' | 'disabled';
   modalities: string[];
+  responseModalities?: string[];
   audioFormat: 'pcm16' | 'g711_ulaw' | 'g711_alaw';
+  toolChoice?: 'auto' | 'none' | 'required' | { type: 'function'; name: string };
+  parallelToolCalls?: boolean;
+  audioBufferSizeSec?: number;
+  noiseReduction?: {
+    enabled: boolean;
+    strength: 'low' | 'medium' | 'high';
+  };
+  mcpServers?: Array<{
+    url: string;
+    name: string;
+    apiKey?: string;
+  }>;
 }
 
 interface RealtimeConnection {
@@ -59,7 +75,7 @@ export function setupRealtimePlaygroundWebSocket(server: HTTPServer): void {
   wss.on('connection', async (ws: WebSocket, request) => {
     const url = new URL(request.url || '', `http://${request.headers.host}`);
     const businessId = url.searchParams.get('businessId');
-    const model = url.searchParams.get('model') || 'gpt-4o-realtime-preview-2024-12-17';
+    const model = url.searchParams.get('model') || 'gpt-realtime';
     const voice = url.searchParams.get('voice') || 'alloy';
 
     if (!businessId) {
@@ -99,9 +115,14 @@ export function setupRealtimePlaygroundWebSocket(server: HTTPServer): void {
         },
         temperature: 0.8,
         maxResponseOutputTokens: 4096,
-        vadMode: 'server_vad',
+        vadMode: 'semantic_vad',
         modalities: ['text', 'audio'],
-        audioFormat: 'pcm16'
+        audioFormat: 'pcm16',
+        noiseReduction: {
+          enabled: true,
+          strength: 'medium'
+        },
+        mcpServers: []
       }
     };
 
@@ -194,7 +215,7 @@ async function handleSessionUpdate(connection: RealtimeConnection, session: Part
     // Connect to OpenAI if not already connected
     const isConnected = (connection.openaiService as any).isConnected;
     if (!isConnected) {
-      await connection.openaiService.connect();
+      await connection.openaiService.connect(connection.config.model);
 
       // Set up OpenAI event handlers
       (connection.openaiService as any).on('message', (message: any) => {
@@ -225,17 +246,20 @@ async function handleSessionUpdate(connection: RealtimeConnection, session: Part
       });
     }
 
-    // Send session update to OpenAI
-    const openaiSession = {
+    // Send session update to OpenAI with GA best practices
+    const openaiSession: any = {
       type: 'session.update',
       session: {
-        model: connection.config.model,
+        modalities: connection.config.modalities,
         voice: connection.config.voice,
         instructions: connection.config.instructions,
         input_audio_transcription: connection.config.inputAudioTranscription.enabled ? {
           model: connection.config.inputAudioTranscription.model
-        } : null,
-        turn_detection: connection.config.vadMode === 'server_vad' ? {
+        } : undefined,
+        turn_detection: connection.config.vadMode === 'semantic_vad' ? {
+          type: 'semantic',
+          eagerness: (connection.config.turnDetection as any).semanticVad?.eagerness || 'medium'
+        } : connection.config.vadMode === 'server_vad' ? {
           type: 'server_vad',
           threshold: connection.config.turnDetection.serverVad?.threshold || 0.5,
           prefix_padding_ms: connection.config.turnDetection.serverVad?.prefixPaddingMs || 300,
@@ -247,11 +271,17 @@ async function handleSessionUpdate(connection: RealtimeConnection, session: Part
           description: tool.description,
           parameters: tool.parameters
         })),
+        tool_choice: connection.config.toolChoice || 'auto',
+        parallel_tool_calls: connection.config.parallelToolCalls !== false,
         temperature: connection.config.temperature,
-        max_response_output_tokens: connection.config.maxResponseOutputTokens === 'inf' ? null : connection.config.maxResponseOutputTokens,
-        modalities: connection.config.modalities
+        max_response_output_tokens: connection.config.maxResponseOutputTokens === 'inf' ? null : connection.config.maxResponseOutputTokens
       }
     };
+
+    // Add audio buffer size if specified
+    if (connection.config.audioBufferSizeSec) {
+      openaiSession.session.audio_buffer_size_sec = connection.config.audioBufferSizeSec;
+    }
 
     (connection.openaiService as any).send(openaiSession);
 

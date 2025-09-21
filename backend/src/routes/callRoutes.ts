@@ -36,8 +36,8 @@ interface SessionConfig {
   audioFormat: 'pcm16' | 'g711_ulaw' | 'g711_alaw';
 }
 
-const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
-  ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+const twilioClient = process.env['TWILIO_ACCOUNT_SID'] && process.env['TWILIO_AUTH_TOKEN']
+  ? twilio(process.env['TWILIO_ACCOUNT_SID'], process.env['TWILIO_AUTH_TOKEN'])
   : null;
 
 // Initiate outbound call with full OpenAI Realtime configuration
@@ -93,12 +93,12 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
     const callId = uuidv4();
 
     // Create call log
-    const { data: callLog, error: logError } = await supabaseAdmin
+    const { error: logError } = await supabaseAdmin
       .from('call_logs')
       .insert({
         call_sid: `pending-${callId}`,
         business_id: businessId,
-        from_number: process.env.TWILIO_PHONE_NUMBER || 'system',
+        from_number: process.env['TWILIO_PHONE_NUMBER'] || 'system',
         to_number: phoneNumber,
         status: 'initiated',
         metadata: {
@@ -116,12 +116,12 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
     }
 
     // Create Twilio call with WebSocket stream
-    const baseUrl = process.env.BASE_URL || `https://${req.get('host')}`;
+    const baseUrl = process.env['BASE_URL'] || `https://${req.get('host')}`;
     const wsUrl = baseUrl.replace('https://', 'wss://').replace('http://', 'ws://');
 
     const call = await twilioClient.calls.create({
       to: phoneNumber,
-      from: process.env.TWILIO_PHONE_NUMBER!,
+      from: process.env['TWILIO_PHONE_NUMBER']!,
       twiml: `<Response>
         <Connect>
           <Stream url="${wsUrl}/ws/twilio-stream">
@@ -268,7 +268,7 @@ router.post('/twilio/voice-agent-twiml', async (req: Request, res: Response): Pr
 router.post('/twilio/voice-agent-status', async (req: Request, res: Response) => {
   try {
     const { CallSid, CallStatus, CallDuration, RecordingUrl } = req.body;
-    const callId = req.query.callId as string;
+    const callId = req.query['callId'] as string;
 
     logger.info(`Call status update: ${CallSid} - ${CallStatus} (duration: ${CallDuration}s)`);
 
@@ -576,7 +576,9 @@ router.get('/analytics', authenticate, async (_req: Request, res: Response): Pro
     const callsByDay: Record<string, number> = {};
     calls?.forEach(call => {
       const date = new Date(call.created_at).toISOString().split('T')[0];
-      callsByDay[date] = (callsByDay[date] || 0) + 1;
+      if (date) {
+        callsByDay[date] = (callsByDay[date] || 0) + 1;
+      }
     });
 
     // Calculate peak hours

@@ -1,4 +1,5 @@
 import WebSocket from 'ws';
+import { EventEmitter } from 'events';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
@@ -60,12 +61,17 @@ interface OpenAIRealtimeConfig {
   onResponseComplete?: (response: Response) => void;
 }
 
-export class OpenAIRealtimeService {
+export class OpenAIRealtimeService extends EventEmitter {
   private ws?: WebSocket;
 
   private config: OpenAIRealtimeConfig;
 
-  private isConnected: boolean = false;
+  private _isConnected: boolean = false;
+
+  // Public getter for connection status
+  public get isConnected(): boolean {
+    return this._isConnected;
+  }
 
   private isMuted: boolean = false;
 
@@ -96,6 +102,7 @@ export class OpenAIRealtimeService {
   private tempDir: string = path.join('/tmp', 'openai-realtime');
 
   constructor(config: OpenAIRealtimeConfig) {
+    super();
     this.config = config;
     this.ensureTempDirectory();
   }
@@ -106,14 +113,14 @@ export class OpenAIRealtimeService {
     }
   }
 
-  async connect(): Promise<void> {
+  async connect(model: string = 'gpt-realtime'): Promise<void> {
     try {
       const apiKey = process.env['OPENAI_API_KEY'];
       if (!apiKey) {
         throw new Error('OpenAI API key not configured');
       }
 
-      const url = 'wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17';
+      const url = `wss://api.openai.com/v1/realtime?model=${model}`;
 
       this.ws = new WebSocket(url, {
         headers: {
@@ -133,7 +140,7 @@ export class OpenAIRealtimeService {
         this.ws.on('open', () => {
           clearTimeout(timeout);
           logger.info('Connected to OpenAI Realtime API');
-          this.isConnected = true;
+          this._isConnected = true;
           this.reconnectAttempts = 0;
           this.setupHeartbeat();
           resolve();
@@ -154,7 +161,8 @@ export class OpenAIRealtimeService {
         this.ws.on('close', (code: number, reason: Buffer) => {
           clearTimeout(timeout);
           logger.info(`OpenAI Realtime connection closed: ${code} - ${reason.toString()}`);
-          this.isConnected = false;
+          this._isConnected = false;
+          this.emit('close', code, reason);
           this.clearHeartbeat();
           void this.handleReconnect();
         });
@@ -171,7 +179,7 @@ export class OpenAIRealtimeService {
 
   private setupHeartbeat(): void {
     this.heartbeatInterval = setInterval(() => {
-      if (this.isConnected && this.ws?.readyState === WebSocket.OPEN) {
+      if (this._isConnected && this.ws?.readyState === WebSocket.OPEN) {
         const timeSinceLastEvent = Date.now() - this.lastEventTime;
         if (timeSinceLastEvent > 60000) {
           logger.warn('No events received for 60 seconds, sending ping');
@@ -189,7 +197,7 @@ export class OpenAIRealtimeService {
   }
 
   async setupSession(): Promise<void> {
-    if (!this.ws || !this.isConnected) {
+    if (!this.ws || !this._isConnected) {
       throw new Error('WebSocket not connected');
     }
 
@@ -203,7 +211,6 @@ export class OpenAIRealtimeService {
         input_audio_format: 'pcm16',
         output_audio_format: 'pcm16',
         input_audio_transcription: {
-          enabled: true,
           model: 'whisper-1',
         },
         turn_detection: {
@@ -237,8 +244,13 @@ export class OpenAIRealtimeService {
     }
   }
 
+  // Public send method for external use
+  public send(event: any): void {
+    this.sendEvent(event);
+  }
+
   async sendAudio(base64Audio: string): Promise<void> {
-    if (!this.isConnected || !this.ws || this.isMuted) return;
+    if (!this._isConnected || !this.ws || this.isMuted) return;
 
     try {
       const pcm16Audio = await this.convertMulawToPCM16(base64Audio);
@@ -256,7 +268,7 @@ export class OpenAIRealtimeService {
   }
 
   async sendText(text: string): Promise<void> {
-    if (!this.isConnected || !this.ws) return;
+    if (!this._isConnected || !this.ws) return;
 
     try {
       const createEvent: RealtimeClientEvent = {
@@ -341,6 +353,9 @@ export class OpenAIRealtimeService {
     try {
       const event = JSON.parse(data.toString()) as RealtimeServerEvent;
       logger.debug(`Received event: ${event.type}`);
+
+      // Emit the raw message for external handlers
+      this.emit('message', event);
 
       switch (event.type) {
         case 'error':
@@ -466,6 +481,9 @@ export class OpenAIRealtimeService {
   private handleError(event: ErrorEvent): void {
     logger.error('OpenAI Realtime error:', event.error);
     this.config.onError?.(event.error.message);
+
+    // Emit error event for external handlers
+    this.emit('error', event.error);
 
     if (event.error.code === 'session_expired') {
       void this.reconnect();
@@ -774,7 +792,7 @@ export class OpenAIRealtimeService {
       delete this.ws;
     }
 
-    this.isConnected = false;
+    this._isConnected = false;
     delete this.sessionId;
     this.audioBuffer = [];
     this.textBuffer = '';

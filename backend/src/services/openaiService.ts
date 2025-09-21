@@ -53,10 +53,13 @@ export class RealtimeSession extends EventEmitter {
   private twilioStreamSid: string | null = null;
   private ffmpegPath: string;
   private conversationHistory: any[] = [];
-  // private retryCount: number = 0;
-  // private maxRetries: number = 3;
-  // private retryDelay: number = 1000;
-  // private isConnected: boolean = false;
+  private retryCount: number = 0;
+  private maxRetries: number = 3;
+  private retryDelay: number = 1000;
+  private isConnected: boolean = false;
+  private healthCheckInterval: NodeJS.Timeout | null = null;
+  private lastPingTime: number = 0;
+  private connectionStartTime: number = 0;
 
   constructor(apiKey: string, config: RealtimeConfig) {
     super();
@@ -102,6 +105,7 @@ export class RealtimeSession extends EventEmitter {
           type: 'session.update',
           session: {
             modalities: ['text', 'audio'],
+            response_modalities: ['text', 'audio'],
             instructions: this.config.instructions,
             voice: this.config.voice,
             input_audio_format: 'pcm16',
@@ -111,9 +115,12 @@ export class RealtimeSession extends EventEmitter {
             },
             turn_detection: this.getTurnDetectionConfig(),
             tools: this.getAllTools(),
+            tool_choice: 'auto',
+            parallel_tool_calls: true,
             temperature: this.config.temperature,
             max_response_output_tokens: this.config.maxOutputTokens,
             input_audio_noise_reduction: this.config.noiseReduction,
+            audio_buffer_size_sec: 1,
           },
         };
 
@@ -125,6 +132,15 @@ export class RealtimeSession extends EventEmitter {
         }
 
         this.ws!.send(JSON.stringify(sessionUpdate));
+
+        // Mark connection as established
+        this.isConnected = true;
+        this.connectionStartTime = Date.now();
+        this.retryCount = 0;
+
+        // Start health monitoring
+        this.startHealthCheck();
+
         resolve();
       });
 
@@ -864,7 +880,82 @@ export class RealtimeSession extends EventEmitter {
     }
   }
 
+  private startHealthCheck(): void {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+    }
+
+    this.healthCheckInterval = setInterval(() => {
+      if (!this.isConnected || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        logger.warn('Connection lost, attempting to reconnect...', {
+          businessId: this.config.businessId,
+        });
+        this.handleReconnect();
+      } else {
+        // Send ping to keep connection alive
+        const timeSinceLastPing = Date.now() - this.lastPingTime;
+        if (timeSinceLastPing > 30000) {
+          this.sendPing();
+        }
+      }
+    }, 10000); // Check every 10 seconds
+  }
+
+  private sendPing(): void {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.lastPingTime = Date.now();
+      // OpenAI Realtime API doesn't require explicit ping/pong,
+      // but we track the last activity time
+      logger.debug('Connection health check passed', {
+        connectionUptime: Date.now() - this.connectionStartTime,
+        businessId: this.config.businessId,
+      });
+    }
+  }
+
+  private async handleReconnect(): Promise<void> {
+    if (this.retryCount >= this.maxRetries) {
+      logger.error('Max reconnection attempts reached', {
+        businessId: this.config.businessId,
+      });
+      this.emit('error', new Error('Failed to reconnect after maximum attempts'));
+      return;
+    }
+
+    this.retryCount++;
+    const delay = this.retryDelay * Math.pow(2, this.retryCount - 1); // Exponential backoff
+
+    logger.info(`Attempting reconnection ${this.retryCount}/${this.maxRetries} in ${delay}ms`, {
+      businessId: this.config.businessId,
+    });
+
+    setTimeout(async () => {
+      try {
+        this.disconnect();
+        await this.connect();
+        logger.info('Reconnection successful', {
+          businessId: this.config.businessId,
+          attempt: this.retryCount,
+        });
+      } catch (error) {
+        logger.error('Reconnection failed', {
+          error,
+          businessId: this.config.businessId,
+          attempt: this.retryCount,
+        });
+        this.handleReconnect();
+      }
+    }, delay);
+  }
+
   disconnect(): void {
+    this.isConnected = false;
+
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+    }
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;

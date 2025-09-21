@@ -25,8 +25,8 @@ export class VoiceAgentHandler {
       path: '/ws/voice-agent',
       verifyClient: (info, cb) => {
         const { query } = parse(info.req.url || '', true);
-        const businessId = query.businessId as string;
-        const callId = query.callId as string;
+        const businessId = query['businessId'] as string;
+        const callId = query['callId'] as string;
 
         if (!businessId || !callId) {
           cb(false, 401, 'Unauthorized');
@@ -39,8 +39,8 @@ export class VoiceAgentHandler {
 
     wss.on('connection', async (ws: WebSocket, req) => {
       const { query } = parse(req.url || '', true);
-      const businessId = query.businessId as string;
-      const callId = query.callId as string;
+      const businessId = query['businessId'] as string;
+      const callId = query['callId'] as string;
 
       logger.info(`Voice agent WebSocket connected for call ${callId}`);
 
@@ -103,9 +103,9 @@ export class VoiceAgentHandler {
       // Create Twilio call with WebSocket stream
       const call = await twilioClient.calls.create({
         to: phoneNumber,
-        from: process.env.TWILIO_PHONE_NUMBER,
-        url: `${process.env.BASE_URL}/api/twilio/voice-agent-twiml?callId=${callId}`,
-        statusCallback: `${process.env.BASE_URL}/api/twilio/voice-agent-status?callId=${callId}`,
+        from: process.env['TWILIO_PHONE_NUMBER'] || '',
+        url: `${process.env['BASE_URL']}/api/twilio/voice-agent-twiml?callId=${callId}`,
+        statusCallback: `${process.env['BASE_URL']}/api/twilio/voice-agent-status?callId=${callId}`,
         statusCallbackEvent: ['initiated', 'answered', 'completed'],
         machineDetection: 'DetectMessageEnd'
       });
@@ -259,7 +259,7 @@ export class VoiceAgentHandler {
     return `<?xml version="1.0" encoding="UTF-8"?>
     <Response>
       <Connect>
-        <Stream url="wss://${process.env.BASE_URL?.replace('https://', '')}/ws/twilio-stream?callId=${callId}" />
+        <Stream url="wss://${process.env['BASE_URL']?.replace('https://', '')}/ws/twilio-stream?callId=${callId}" />
       </Connect>
     </Response>`;
   }
