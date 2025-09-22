@@ -20,6 +20,7 @@ const Business = lazy(() => import('./pages/Business'));
 const Agents = lazy(() => import('./pages/Agents'));
 const Analytics = lazy(() => import('./pages/Analytics'));
 const Settings = lazy(() => import('./pages/Settings'));
+const Billing = lazy(() => import('./pages/Billing'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const VoiceAgentsDashboard = lazy(() => import('./pages/VoiceAgentsDashboard'));
@@ -240,7 +241,7 @@ const App: React.FC = () => {
               element={
                 <Suspense fallback={<LoadingSpinner />}>
                   <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
-                    <Settings />
+                    <Billing />
                   </motion.div>
                 </Suspense>
               }

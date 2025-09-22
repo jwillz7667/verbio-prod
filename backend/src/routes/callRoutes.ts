@@ -294,14 +294,10 @@ router.post('/outbound', authenticate, async (req: Request, res: Response): Prom
       .insert({
         call_sid: `pending-${callId}`,
         business_id: businessId,
+        agent_id: agent?.id || null,
         from_number: process.env['TWILIO_PHONE_NUMBER'] || 'system',
         to_number: phoneNumber,
         status: 'initiated',
-        metadata: {
-          config: mergedConfig,
-          initiated_by: userId,
-          agent_id: agent?.id,
-        },
       })
       .select()
       .single();
@@ -409,10 +405,10 @@ router.post('/initiate', authenticate, async (req: Request, res: Response): Prom
       .insert({
         call_sid: `pending-${callId}`,
         business_id: businessId,
+        agent_id: null,
         from_number: 'system',
         to_number: phoneNumber,
         status: 'initiated',
-        metadata: { settings, initiated_by: userId },
       });
 
     if (logError) {
@@ -465,7 +461,56 @@ router.post('/twilio/voice-agent-twiml', async (req: Request, res: Response): Pr
   }
 });
 
-// Twilio status callback
+// Twilio status callback for outbound calls
+router.post('/twilio/status', async (req: Request, res: Response) => {
+  try {
+    const { CallSid, CallStatus, CallDuration, RecordingUrl } = req.body;
+    const callId = req.query['callId'] as string;
+
+    logger.info(`Call status update: ${CallSid} - ${CallStatus} (duration: ${CallDuration}s)`);
+
+    // Update call status in database
+    const updateData: any = {
+      status: CallStatus,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (CallDuration) {
+      updateData.duration = parseInt(CallDuration, 10);
+    }
+
+    if (RecordingUrl) {
+      updateData.recording_url = RecordingUrl;
+    }
+
+    // First try to update by callId pattern
+    const { error: updateError } = await supabaseAdmin
+      .from('call_logs')
+      .update(updateData)
+      .or(`call_sid.eq.${CallSid},call_sid.eq.pending-${callId}`);
+
+    if (updateError) {
+      logger.error('Error updating call status:', updateError);
+    }
+
+    // Handle call completion
+    if (CallStatus === 'completed' || CallStatus === 'failed' || CallStatus === 'no-answer' || CallStatus === 'busy') {
+      updateData.ended_at = new Date().toISOString();
+
+      // Notify any active WebSocket connections
+      if (callId) {
+        logger.info('Call completed', { callId, status: CallStatus });
+      }
+    }
+
+    res.sendStatus(200);
+  } catch (error) {
+    logger.error('Error handling call status:', error);
+    res.sendStatus(500);
+  }
+});
+
+// Legacy Twilio status callback for voice agent
 router.post('/twilio/voice-agent-status', async (req: Request, res: Response) => {
   try {
     const { CallSid, CallStatus, CallDuration, RecordingUrl } = req.body;

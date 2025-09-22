@@ -11,6 +11,7 @@ import { TwilioOpenAIRealtimeBridge } from '../services/twilioRealtimeBridge';
 import { supabaseAdmin } from '../config/supabase';
 import Logger from '../utils/logger';
 import { Tool } from '../types/openaiRealtimeEvents';
+import { tokenService } from '../services/tokenService';
 
 const logger = Logger;
 
@@ -45,6 +46,8 @@ export async function handleConnection(ws: WebSocket, req: IncomingMessage): Pro
   const connectionId = Date.now().toString();
   let bridge: TwilioOpenAIRealtimeBridge | null = null;
   let heartbeatInterval: NodeJS.Timeout | null = null;
+  let callStartTime: Date | null = null;
+  let businessIdForTracking: string | null = null;
 
   try {
     // Parse connection parameters
@@ -58,10 +61,20 @@ export async function handleConnection(ws: WebSocket, req: IncomingMessage): Pro
     };
 
     // Validate origin for security
-    const origin = req.headers.origin || req.headers.host;
+    const origin = req.headers.origin || req.headers.host || '';
     if (config.get('NODE_ENV') === 'production') {
-      const allowedOrigins = ['media.twiliocdn.com', 'twiliocdn.com'];
-      if (origin && !allowedOrigins.some(allowed => origin.includes(allowed))) {
+      const allowedOrigins = [
+        'https://media.twiliocdn.com',
+        'https://sdk.twilio.com',
+        'media.twiliocdn.com',
+        'sdk.twilio.com',
+        'twiliocdn.com'
+      ];
+      const isValidOrigin = allowedOrigins.some(allowed =>
+        origin === allowed || origin.includes(allowed)
+      );
+
+      if (!isValidOrigin) {
         logger.warn('Rejected connection from unauthorized origin', { origin, connectionId });
         ws.send(JSON.stringify({ error: 'Unauthorized origin' }));
         ws.close(1008, 'Unauthorized');
@@ -81,6 +94,15 @@ export async function handleConnection(ws: WebSocket, req: IncomingMessage): Pro
       logger.error('Missing businessId parameter', { connectionId });
       ws.send(JSON.stringify({ error: 'Missing businessId parameter' }));
       ws.close(1008, 'Missing businessId');
+      return;
+    }
+
+    // Check token balance
+    const hasTokens = await tokenService.hassufficientTokens(params.businessId, 10); // Minimum 10 tokens required
+    if (!hasTokens) {
+      logger.warn('Insufficient token balance for call', { businessId: params.businessId, connectionId });
+      ws.send(JSON.stringify({ error: 'Insufficient token balance. Please purchase more tokens.' }));
+      ws.close(1008, 'Insufficient tokens');
       return;
     }
 
@@ -215,6 +237,10 @@ export async function handleConnection(ws: WebSocket, req: IncomingMessage): Pro
       activeBridges.set(params.callSid, bridge);
     }
 
+    // Track call start time and business ID for token tracking
+    callStartTime = new Date();
+    businessIdForTracking = params.businessId;
+
     // Setup heartbeat for connection health monitoring
     heartbeatInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -237,7 +263,7 @@ export async function handleConnection(ws: WebSocket, req: IncomingMessage): Pro
     await logConnectionToDatabase(params.businessId, params.from || 'unknown', agent?.id, connectionId);
 
     // Setup WebSocket event handlers
-    ws.on('close', (code: number, reason: Buffer) => {
+    ws.on('close', async (code: number, reason: Buffer) => {
       logger.info('WebSocket connection closed', {
         connectionId,
         code,
@@ -247,6 +273,54 @@ export async function handleConnection(ws: WebSocket, req: IncomingMessage): Pro
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
         heartbeatInterval = null;
+      }
+
+      // Track token usage for the call
+      if (callStartTime && businessIdForTracking) {
+        try {
+          const callDurationSeconds = Math.floor((Date.now() - callStartTime.getTime()) / 1000);
+          const callDurationMinutes = Math.ceil(callDurationSeconds / 60);
+
+          // Calculate tokens based on call type (inbound vs outbound)
+          const isInbound = params.from && !params.from.startsWith('+1763'); // Assuming our numbers start with +1763
+          const serviceType = isInbound ? 'inbound_call' : 'outbound_call';
+          const tokensConsumed = await tokenService.calculateTokensForService(serviceType, callDurationSeconds);
+
+          if (tokensConsumed > 0) {
+            await tokenService.trackUsage({
+              businessId: businessIdForTracking,
+              serviceType,
+              referenceId: params.callSid || connectionId,
+              tokensConsumed,
+              durationSeconds: callDurationSeconds,
+              metadata: {
+                from: params.from,
+                streamSid: params.streamSid,
+                agentType: params.agentType,
+              },
+            });
+
+            // Update call_logs with tokens consumed if we have a call record
+            if (params.callSid) {
+              await supabaseAdmin
+                .from('call_logs')
+                .update({
+                  tokens_consumed: tokensConsumed,
+                  duration: callDurationSeconds,
+                })
+                .eq('call_sid', params.callSid);
+            }
+
+            logger.info('Call token usage tracked', {
+              businessId: businessIdForTracking,
+              callDuration: callDurationMinutes,
+              tokensConsumed,
+              serviceType,
+            });
+          }
+        } catch (error) {
+          logger.error('Error tracking token usage', { error, connectionId });
+        }
       }
 
       // Bridge will handle its own cleanup through the event handlers

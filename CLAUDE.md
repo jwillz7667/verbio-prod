@@ -19,21 +19,27 @@ npm run dev:backend            # Backend only with nodemon
 npm run dev:frontend           # Frontend only with Vite
 
 # Testing
-npm test                       # Run all tests
-npm run test:backend           # Backend Jest tests
-npm run test:backend -- --coverage  # With coverage report
-npm run test:e2e               # Playwright E2E tests
-npx jest --testPathPattern=stripe  # Run specific test file
+npm test                       # Run all tests (backend + frontend)
+npm run test:backend           # Backend Jest tests only
+npm run test:backend -- --coverage  # Backend tests with coverage report
+npm run test:backend -- --watch    # Backend tests in watch mode
+npx jest --testPathPattern=stripe  # Run specific test file pattern
 
 # Building
 npm run build                  # Build both backend and frontend
 npm run build:backend          # TypeScript compilation to dist/
 npm run build:frontend         # Vite production build
 
-# Linting & Formatting
+# Type Checking & Linting
+npm run type-check             # TypeScript type checking (frontend)
 npm run lint                   # Lint all workspaces
 npm run lint:fix               # Auto-fix linting issues
 npm run format                 # Prettier format all files
+
+# Database
+npm run db:init                # Initialize database
+npm run db:migrate             # Run migrations
+npx supabase db push           # Apply migrations to Supabase
 
 # Deployment - Backend to Cloud Run
 cd backend
@@ -155,6 +161,26 @@ app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 ```
 
 The service tracks charge lifecycle: succeeded → refunded with automatic database updates.
+
+## Token Billing System
+
+The platform includes a comprehensive token-based billing system with subscription plans and pay-as-you-go packages:
+
+### Token Consumption Rates
+- Outbound Calls: 2.0 tokens/minute
+- Inbound Calls: 1.5 tokens/minute
+- SMS Messages: 0.5 tokens/message
+- Transcription: 0.1 tokens/minute
+- AI Agent Requests: 1.0 tokens/request
+
+### Key Implementation Files
+- `/backend/src/services/tokenService.ts` - Token balance and usage tracking
+- `/backend/src/services/subscriptionService.ts` - Subscription management
+- `/backend/src/routes/billing.ts` - Billing API endpoints
+- `/frontend/src/pages/Billing.tsx` - Billing dashboard UI
+- `/supabase/migrations/20250922000001_token_billing_system.sql` - Database schema
+
+New users automatically receive 100 trial tokens. Calls require minimum 10 tokens to initiate.
 
 ## Common TypeScript Issues
 

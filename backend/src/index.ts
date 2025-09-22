@@ -21,6 +21,8 @@ import twilioRoutes from './routes/twilio';
 import { stripeRoutes } from './routes/stripe';
 import analyticsRoutes from './routes/analytics';
 import callRoutes from './routes/callRoutes';
+import billingRoutes from './routes/billing';
+import agentRoutes from './routes/agentRoutes';
 import { handleConnection } from './socket/realtimeHandler';
 import { voiceAgentHandler } from './socket/voiceAgentHandler';
 import { setupRealtimePlaygroundWebSocket } from './socket/realtimePlaygroundHandler';
@@ -158,6 +160,8 @@ app.use('/api/twilio', twilioRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/calls', callRoutes);
+app.use('/api/billing', billingRoutes);
+app.use('/api/agents', agentRoutes);
 
 // Setup the realtime playground WebSocket
 setupRealtimePlaygroundWebSocket(server);
@@ -170,16 +174,18 @@ server.on('upgrade', (request, socket, head) => {
     voiceAgentHandler.setupWebSocket(server);
   } else if (pathname === '/ws/realtime') {
     // Realtime playground WebSocket is handled by setupRealtimePlaygroundWebSocket
-  } else if (pathname === '/realtime') {
-    const origin = request.headers.origin || '';
+  } else if (pathname === '/ws/twilio-stream' || pathname === '/realtime') {
+    // Handle both Twilio stream and legacy realtime paths
+    const origin = request.headers.origin || request.headers.host || '';
     const validOrigins = [
       'https://media.twiliocdn.com',
       'https://sdk.twilio.com',
-      'wss://media.twiliocdn.com',
+      'media.twiliocdn.com',
+      'sdk.twilio.com',
       FRONTEND_URL,
     ];
 
-    if (NODE_ENV === 'production' && !validOrigins.some((valid) => origin.includes(valid))) {
+    if (NODE_ENV === 'production' && !validOrigins.some((valid) => origin === valid || origin.includes(valid))) {
       logger.warn('WebSocket connection rejected - invalid origin', { origin, ip: request.socket.remoteAddress });
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();
