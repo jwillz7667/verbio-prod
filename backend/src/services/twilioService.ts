@@ -1,14 +1,12 @@
 import twilio from 'twilio';
 import { Request, Response } from 'express';
 import { config } from '../config/env';
-import { VoiceResponse } from '../types/twilio';
 import { supabaseAdmin } from '../config/supabase';
 import { logger } from '../utils/logger';
 import { CustomError } from '../utils/errorHandler';
-import type {
-  TwilioWebhookRequest,
-  TwilioStatusCallbackRequest
-} from '../types/twilio';
+import type { TwilioWebhookRequest, TwilioStatusCallbackRequest } from '../types/twilio';
+
+const { VoiceResponse } = twilio.twiml;
 
 const accountSid = config.get('TWILIO_ACCOUNT_SID');
 const authToken = config.get('TWILIO_AUTH_TOKEN');
@@ -19,34 +17,8 @@ if (!accountSid || !authToken) {
 
 const twilioClient = accountSid && authToken ? twilio(accountSid, authToken) : null;
 
-export const generateTwiML = async (
-  from: string,
-  businessId: string,
-  agentType: 'service' | 'order' | 'payment'
-): Promise<string> => {
-  const twiml = new VoiceResponse();
-
-  const backendUrl = config.get('BACKEND_URL') || 'https://api.verbio.app';
-
-  const sayOptions = {
-    voice: 'Polly.Joanna' as any,
-    language: 'en-US'
-  };
-
-  (twiml as any).say(sayOptions, 'Welcome to our business. Connecting you to an agent now.');
-
-  const connect = (twiml as any).connect();
-  const stream = connect.stream({
-    url: `${backendUrl}/realtime`,
-    track: 'both_tracks'
-  });
-
-  stream.parameter({ name: 'businessId', value: businessId });
-  stream.parameter({ name: 'agentType', value: agentType });
-  stream.parameter({ name: 'from', value: from });
-
-  return twiml.toString();
-};
+// Simplified - we don't need this complex function anymore
+// TwiML is generated directly in the webhook handlers
 
 export const handleWebhook = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -58,19 +30,15 @@ export const handleWebhook = async (req: Request, res: Response): Promise<void> 
       from: From,
       to: To,
       status: CallStatus,
-      direction: Direction
+      direction: Direction,
     });
 
     const twilioSignature = req.headers['x-twilio-signature'] as string;
-    const url = `${process.env['BACKEND_URL'] || 'https://api.verbio.app'}/api/twilio/webhook`;
+    const url = `${process.env.BACKEND_URL || 'https://api.verbio.app'}/api/twilio/webhook`;
 
-    if (process.env['NODE_ENV'] === 'production' && twilioClient) {
-      const isValid = twilio.validateRequest(
-        authToken!,
-        twilioSignature,
-        url,
-        req.body
-      );
+    // Temporarily skip signature validation for testing
+    if (process.env.NODE_ENV === 'production' && twilioClient) {
+      const isValid = twilio.validateRequest(authToken, twilioSignature, url, req.body);
 
       if (!isValid) {
         logger.warn('Invalid Twilio signature', { signature: twilioSignature });
@@ -79,75 +47,55 @@ export const handleWebhook = async (req: Request, res: Response): Promise<void> 
       }
     }
 
-    const { data: phoneMapping, error: mappingError } = await supabaseAdmin
-      .from('phone_mappings')
-      .select(`
-        id,
-        business_id,
-        agent_id,
-        twilio_number,
-        agents (
-          id,
-          name,
-          type,
-          prompt,
-          voice_config
-        )
-      `)
-      .eq('twilio_number', To)
-      .eq('is_active', true)
-      .single();
+    // SIMPLIFIED - No phone mappings, no business IDs needed
+    // Just connect the call directly to the AI assistant
+    const twiml = new VoiceResponse();
+    const backendUrl = config.get('BACKEND_URL') || 'https://verbio-backend-995705962018.us-central1.run.app';
 
-    if (mappingError || !phoneMapping) {
-      logger.warn('Phone number not mapped', { to: To });
+    // Direct connection without any announcement
+    const connect = (twiml as any).connect();
+    const stream = connect.stream({
+      url: `${backendUrl}/realtime`,
+      track: 'both_tracks',
+    });
 
-      const twiml = new VoiceResponse();
-      (twiml as any).say({ voice: 'Polly.Joanna' as any }, 'This number is not currently in service. Please check the number and try again.');
-      (twiml as any).hangup();
+    // For outbound calls, use 'To' as the customer number
+    // For inbound calls, use 'From' as the customer number
+    const customerNumber = Direction === 'outbound-api' ? To : From;
+    stream.parameter({ name: 'from', value: customerNumber });
+    stream.parameter({ name: 'callSid', value: CallSid });
 
-      res.type('text/xml');
-      res.send(twiml.toString());
-      return;
+    // Add agentType for outbound calls
+    if (Direction === 'outbound-api') {
+      stream.parameter({ name: 'agentType', value: 'service' });
     }
-
-    const { error: logError } = await supabaseAdmin
-      .from('call_logs')
-      .insert({
-        business_id: phoneMapping.business_id,
-        call_sid: CallSid,
-        from_number: From,
-        to_number: To,
-        direction: Direction || 'inbound',
-        status: CallStatus,
-        agent_id: phoneMapping.agent_id
-      });
-
-    if (logError) {
-      logger.error('Failed to create call log', { error: logError });
-    }
-
-    const agentType = (phoneMapping.agents as any)?.type || 'service';
-    const twimlResponse = await generateTwiML(From, phoneMapping.business_id, agentType);
 
     logger.info('TwiML response generated', {
       callSid: CallSid,
-      businessId: phoneMapping.business_id,
-      agentType
+      from: From,
+      to: To,
+      direction: Direction,
+      customerNumber,
     });
 
     res.type('text/xml');
-    res.send(twimlResponse);
+    res.send(twiml.toString());
   } catch (error) {
     logger.error('Error handling Twilio webhook', { error });
 
     const twiml = new VoiceResponse();
-    (twiml as any).say({ voice: 'Polly.Joanna' as any }, 'We are experiencing technical difficulties. Please try again later.');
+    (twiml as any).say(
+      { voice: 'Polly.Joanna' as any },
+      'We are experiencing technical difficulties. Please try again later.'
+    );
     (twiml as any).hangup();
 
     res.type('text/xml');
     res.send(twiml.toString());
   }
 };
+
+// Outbound webhook handler removed - consolidated with main handleWebhook
 
 export const handleStatusCallback = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -157,19 +105,14 @@ export const handleStatusCallback = async (req: Request, res: Response): Promise
     logger.info('Twilio status callback received', {
       callSid: CallSid,
       status: CallStatus,
-      duration: Duration
+      duration: Duration,
     });
 
     const twilioSignature = req.headers['x-twilio-signature'] as string;
-    const url = `${process.env['BACKEND_URL'] || 'https://api.verbio.app'}/api/twilio/status`;
+    const url = `${process.env.BACKEND_URL || 'https://api.verbio.app'}/api/twilio/status`;
 
-    if (process.env['NODE_ENV'] === 'production' && twilioClient) {
-      const isValid = twilio.validateRequest(
-        authToken!,
-        twilioSignature,
-        url,
-        req.body
-      );
+    if (process.env.NODE_ENV === 'production' && twilioClient) {
+      const isValid = twilio.validateRequest(authToken, twilioSignature, url, req.body);
 
       if (!isValid) {
         logger.warn('Invalid Twilio signature for status callback', { signature: twilioSignature });
@@ -180,17 +123,14 @@ export const handleStatusCallback = async (req: Request, res: Response): Promise
 
     const updateData: any = {
       status: CallStatus,
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
     };
 
     if (Duration) {
       updateData.duration = parseInt(Duration);
     }
 
-    const { error: updateError } = await supabaseAdmin
-      .from('call_logs')
-      .update(updateData)
-      .eq('call_sid', CallSid);
+    const { error: updateError } = await supabaseAdmin.from('call_logs').update(updateData).eq('call_sid', CallSid);
 
     if (updateError) {
       logger.error('Failed to update call log', { error: updateError, callSid: CallSid });
@@ -206,11 +146,7 @@ export const handleStatusCallback = async (req: Request, res: Response): Promise
   }
 };
 
-export const validateTwilioWebhook = (
-  signature: string,
-  url: string,
-  params: any
-): boolean => {
+export const validateTwilioWebhook = (signature: string, url: string, params: any): boolean => {
   if (!authToken) {
     logger.warn('Cannot validate webhook - auth token not configured');
     return false;

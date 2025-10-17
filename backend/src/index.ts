@@ -17,7 +17,7 @@ import authRoutes from './routes/auth';
 import authOAuthRoutes from './routes/authOAuth';
 import businessRoutes from './routes/business';
 import ordersRoutes from './routes/orders';
-import twilioRoutes from './routes/twilio';
+// import twilioRoutes from './routes/twilio'; // Removed - functionality moved to realtimeHandler
 import { stripeRoutes } from './routes/stripe';
 import analyticsRoutes from './routes/analytics';
 import callRoutes from './routes/callRoutes';
@@ -35,7 +35,8 @@ const SENTRY_DSN = config.get('SENTRY_DSN');
 const app: Application = express();
 
 // Trust proxy when running on Cloud Run
-app.set('trust proxy', true);
+// Set to specific number of proxies or 'loopback' for Cloud Run
+app.set('trust proxy', NODE_ENV === 'production' ? 1 : false);
 
 if (SENTRY_DSN && NODE_ENV === 'production') {
   Sentry.init({
@@ -61,8 +62,26 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later',
   standardHeaders: true,
   legacyHeaders: false,
+  // Skip IP validation since we're behind Cloud Run proxy
+  skipSuccessfulRequests: false,
+  skipFailedRequests: false,
+  // Use custom key generator for Cloud Run
+  keyGenerator: (req: Request) => {
+    // Use X-Forwarded-For header from Cloud Run
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (forwardedFor) {
+      // Get the first IP in the chain (the original client IP)
+      const ips = (forwardedFor as string).split(',');
+      return ips[0].trim();
+    }
+    // Fallback to req.ip if no forwarded header
+    return req.ip || 'unknown';
+  },
   handler: (req: Request, res: Response) => {
-    logger.warn('Rate limit exceeded', { ip: req.ip, path: req.path });
+    logger.warn('Rate limit exceeded', {
+      ip: req.headers['x-forwarded-for'] || req.ip,
+      path: req.path,
+    });
     res.status(429).json({ error: 'Too many requests' });
   },
 });
@@ -156,7 +175,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/auth/oauth', authOAuthRoutes);
 app.use('/api/business', businessRoutes);
 app.use('/api/orders', ordersRoutes);
-app.use('/api/twilio', twilioRoutes);
+// app.use('/api/twilio', twilioRoutes); // Removed - functionality moved to realtimeHandler
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/calls', callRoutes);
@@ -171,7 +190,7 @@ server.on('upgrade', (request, socket, head) => {
 
   if (pathname === '/ws/voice-agent') {
     // Voice agent WebSocket handled by voiceAgentHandler
-    voiceAgentHandler.setupWebSocket(server);
+    voiceAgentHandler.handleUpgrade(request, socket, head);
   } else if (pathname === '/ws/realtime') {
     // Realtime playground WebSocket is handled by setupRealtimePlaygroundWebSocket
   } else if (pathname === '/ws/twilio-stream' || pathname === '/realtime') {

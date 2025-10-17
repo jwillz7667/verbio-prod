@@ -4,38 +4,36 @@ import { logger } from '../utils/logger';
 
 const router = Router();
 
-router.post('/webhook',
-  async (req: Request, res: Response): Promise<void> => {
-    try {
-      const sig = req.headers['stripe-signature'];
+router.post('/webhook', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const sig = req.headers['stripe-signature'];
 
-      if (!sig || typeof sig !== 'string') {
-        logger.warn('Stripe webhook missing signature');
-        res.status(400).json({ error: 'Missing stripe-signature header' });
-        return;
-      }
-
-      if (!req.body || !Buffer.isBuffer(req.body)) {
-        logger.warn('Stripe webhook missing raw body');
-        res.status(400).json({ error: 'Webhook requires raw body' });
-        return;
-      }
-
-      await stripeService.handleWebhook(req.body, sig);
-
-      res.status(200).json({ received: true });
-    } catch (error: any) {
-      logger.error('Stripe webhook error', { error: error.message });
-
-      if (error.message?.includes('Webhook signature verification failed')) {
-        res.status(400).json({ error: 'Invalid signature' });
-        return;
-      }
-
-      res.status(400).json({ error: error.message || 'Webhook processing failed' });
+    if (!sig || typeof sig !== 'string') {
+      logger.warn('Stripe webhook missing signature');
+      res.status(400).json({ error: 'Missing stripe-signature header' });
+      return;
     }
+
+    if (!req.body || !Buffer.isBuffer(req.body)) {
+      logger.warn('Stripe webhook missing raw body');
+      res.status(400).json({ error: 'Webhook requires raw body' });
+      return;
+    }
+
+    await stripeService.handleWebhook(req.body, sig);
+
+    res.status(200).json({ received: true });
+  } catch (error: any) {
+    logger.error('Stripe webhook error', { error: error.message });
+
+    if (error.message?.includes('Webhook signature verification failed')) {
+      res.status(400).json({ error: 'Invalid signature' });
+      return;
+    }
+
+    res.status(400).json({ error: error.message || 'Webhook processing failed' });
   }
-);
+});
 
 router.post('/create-payment-intent', async (req: Request, res: Response): Promise<void> => {
   try {
@@ -138,8 +136,8 @@ router.post('/refund/:chargeId', async (req: Request, res: Response): Promise<vo
 });
 
 router.get('/health', (_req: Request, res: Response) => {
-  const hasStripeKey = !!process.env['STRIPE_SECRET_KEY'];
-  const hasWebhookSecret = !!process.env['STRIPE_WEBHOOK_SECRET'];
+  const hasStripeKey = !!process.env.STRIPE_SECRET_KEY;
+  const hasWebhookSecret = !!process.env.STRIPE_WEBHOOK_SECRET;
 
   res.json({
     status: hasStripeKey && hasWebhookSecret ? 'healthy' : 'misconfigured',

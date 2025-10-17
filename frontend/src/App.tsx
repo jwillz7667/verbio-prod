@@ -24,6 +24,7 @@ const Billing = lazy(() => import('./pages/Billing'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const AuthCallback = lazy(() => import('./pages/AuthCallback'));
 const VoiceAgentsDashboard = lazy(() => import('./pages/VoiceAgentsDashboard'));
+const AgentBuilder = lazy(() => import('./pages/AgentBuilder'));
 
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
@@ -253,6 +254,61 @@ const App: React.FC = () => {
                 <Suspense fallback={<LoadingSpinner />}>
                   <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
                     <VoiceAgentsDashboard />
+                  </motion.div>
+                </Suspense>
+              }
+            />
+
+            <Route
+              path="agent-builder"
+              element={
+                <Suspense fallback={<LoadingSpinner />}>
+                  <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
+                    <AgentBuilder />
+                  </motion.div>
+                </Suspense>
+              }
+            />
+
+            <Route
+              path="activities"
+              element={
+                <Suspense fallback={<LoadingSpinner />}>
+                  <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
+                    <div>Activities Page (Coming Soon)</div>
+                  </motion.div>
+                </Suspense>
+              }
+            />
+
+            <Route
+              path="customers"
+              element={
+                <Suspense fallback={<LoadingSpinner />}>
+                  <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
+                    <div>Customers Page (Coming Soon)</div>
+                  </motion.div>
+                </Suspense>
+              }
+            />
+
+            <Route
+              path="reports"
+              element={
+                <Suspense fallback={<LoadingSpinner />}>
+                  <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
+                    <div>Reports Page (Coming Soon)</div>
+                  </motion.div>
+                </Suspense>
+              }
+            />
+
+            <Route
+              path="help"
+              element={
+                <Suspense fallback={<LoadingSpinner />}>
+                  <motion.div variants={pageVariants} initial="initial" animate="animate" exit="exit">
+                    <div>Help & Support Page (Coming Soon)</div>
                   </motion.div>
                 </Suspense>
               }

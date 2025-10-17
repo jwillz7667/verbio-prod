@@ -1,4 +1,6 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
+import { v4 as uuidv4 } from 'uuid';
+import Joi from 'joi';
 import { authenticate, AuthRequest, requireBusinessAccess } from '../middleware/auth';
 import { asyncHandler } from '../utils/errorHandler';
 import { supabaseAdmin } from '../config/supabase';
@@ -6,14 +8,14 @@ import { OpenAIAgentService } from '../services/openaiAgentService';
 import { AGENT_TEMPLATES, createAgentFromTemplate } from '../agents/templates';
 import { AGENT_TOOLS, TOOL_CATEGORIES } from '../agents/tools';
 import Logger from '../utils/logger';
-import { v4 as uuidv4 } from 'uuid';
-import Joi from 'joi';
 
 const router = Router();
 const logger = Logger;
 
 // Validation schemas
-const createAgentSchema = Joi.object({
+// Agent creation schema
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _createAgentSchema = Joi.object({
   name: Joi.string().required(),
   type: Joi.string().valid('service', 'order', 'payment', 'scheduling', 'triage', 'supervisor').required(),
   prompt: Joi.string().required(),
@@ -45,15 +47,17 @@ const toolAssignmentSchema = Joi.object({
 });
 
 // Get all agents for a business with enhanced data
-router.get('/business/:businessId/agents',
+router.get(
+  '/business/:businessId/agents',
   authenticate,
   requireBusinessAccess,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<Response | void> => {
     const { businessId } = req.params;
 
     const { data: agents, error } = await supabaseAdmin
       .from('agents')
-      .select(`
+      .select(
+        `
         *,
         agent_tool_assignments (
           tool_id,
@@ -75,7 +79,8 @@ router.get('/business/:businessId/agents',
           apply_order,
           agent_guardrails (*)
         )
-      `)
+      `
+      )
       .eq('business_id', businessId)
       .order('created_at', { ascending: false });
 
@@ -93,10 +98,11 @@ router.get('/business/:businessId/agents',
 );
 
 // Create agent from template
-router.post('/business/:businessId/agent/from-template',
+router.post(
+  '/business/:businessId/agent/from-template',
   authenticate,
   requireBusinessAccess,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<Response | void> => {
     const { businessId } = req.params;
     const { templateType, customizations } = req.body;
 
@@ -114,7 +120,7 @@ router.post('/business/:businessId/agent/from-template',
       type: template.type,
       prompt: template.instructions,
       model_override: template.model,
-      agent_role: template.type + '_specialist',
+      agent_role: `${template.type}_specialist`,
       max_iterations: template.maxIterations || 10,
       enable_tracing: true,
       agent_config: {
@@ -135,11 +141,7 @@ router.post('/business/:businessId/agent/from-template',
       is_active: true,
     };
 
-    const { data: agent, error } = await supabaseAdmin
-      .from('agents')
-      .insert(agentData)
-      .select()
-      .single();
+    const { data: agent, error } = await supabaseAdmin.from('agents').insert(agentData).select().single();
 
     if (error) {
       logger.error('Failed to create agent from template', { error, businessId });
@@ -169,9 +171,7 @@ router.post('/business/:businessId/agent/from-template',
       }
 
       if (toolAssignments.length > 0) {
-        await supabaseAdmin
-          .from('agent_tool_assignments')
-          .insert(toolAssignments);
+        await supabaseAdmin.from('agent_tool_assignments').insert(toolAssignments);
       }
     }
 
@@ -190,16 +190,17 @@ router.post('/business/:businessId/agent/from-template',
 );
 
 // Run agent with message
-router.post('/business/:businessId/agent/:agentId/run',
+router.post(
+  '/business/:businessId/agent/:agentId/run',
   authenticate,
   requireBusinessAccess,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<Response | void> => {
     const { businessId, agentId } = req.params;
 
     const { error: validationError, value } = runAgentSchema.validate(req.body);
     if (validationError) {
       return res.status(400).json({
-        error: validationError.details[0]?.message || 'Invalid input'
+        error: validationError.details[0]?.message || 'Invalid input',
       });
     }
 
@@ -207,9 +208,9 @@ router.post('/business/:businessId/agent/:agentId/run',
 
     // Create agent service instance
     const agentService = new OpenAIAgentService({
-      businessId,
+      businessId: businessId!,
       sessionId: sessionId || uuidv4(),
-      customerId: req.user?.userId,
+      customerId: req.user?.userId || 'anonymous',
     });
 
     try {
@@ -218,10 +219,10 @@ router.post('/business/:businessId/agent/:agentId/run',
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
+          Connection: 'keep-alive',
         });
 
-        const streamResult = await agentService.streamAgent(agentId, message, {
+        const streamResult = await agentService.streamAgent(agentId!, message, {
           maxIterations,
         });
 
@@ -233,7 +234,7 @@ router.post('/business/:businessId/agent/:agentId/run',
         res.end();
       } else {
         // Regular run
-        const result = await agentService.runAgent(agentId, message, {
+        const result = await agentService.runAgent(agentId!, message, {
           maxIterations,
         });
 
@@ -255,18 +256,15 @@ router.post('/business/:businessId/agent/:agentId/run',
 );
 
 // Get agent tools
-router.get('/business/:businessId/agent-tools',
+router.get(
+  '/business/:businessId/agent-tools',
   authenticate,
   requireBusinessAccess,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<Response | void> => {
     const { businessId } = req.params;
     const { category } = req.query;
 
-    let query = supabaseAdmin
-      .from('agent_tools')
-      .select('*')
-      .eq('business_id', businessId)
-      .eq('is_active', true);
+    let query = supabaseAdmin.from('agent_tools').select('*').eq('business_id', businessId).eq('is_active', true);
 
     if (category) {
       query = query.eq('category', category);
@@ -289,16 +287,17 @@ router.get('/business/:businessId/agent-tools',
 );
 
 // Assign tool to agent
-router.post('/business/:businessId/agent/:agentId/assign-tool',
+router.post(
+  '/business/:businessId/agent/:agentId/assign-tool',
   authenticate,
   requireBusinessAccess,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<Response | void> => {
     const { businessId, agentId } = req.params;
 
     const { error: validationError, value } = toolAssignmentSchema.validate(req.body);
     if (validationError) {
       return res.status(400).json({
-        error: validationError.details[0]?.message || 'Invalid input'
+        error: validationError.details[0]?.message || 'Invalid input',
       });
     }
 
@@ -363,10 +362,11 @@ router.post('/business/:businessId/agent/:agentId/assign-tool',
 );
 
 // Create agent handoff
-router.post('/business/:businessId/agent/:fromAgentId/handoff/:toAgentId',
+router.post(
+  '/business/:businessId/agent/:fromAgentId/handoff/:toAgentId',
   authenticate,
   requireBusinessAccess,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<Response | void> => {
     const { businessId, fromAgentId, toAgentId } = req.params;
     const { conditions, priority } = req.body;
 
@@ -417,14 +417,19 @@ router.post('/business/:businessId/agent/:fromAgentId/handoff/:toAgentId',
 );
 
 // Get agent sessions
-router.get('/business/:businessId/agent-sessions',
+router.get(
+  '/business/:businessId/agent-sessions',
   authenticate,
   requireBusinessAccess,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<Response | void> => {
     const { businessId } = req.params;
     const { limit = 50, offset = 0 } = req.query;
 
-    const { data: sessions, error, count } = await supabaseAdmin
+    const {
+      data: sessions,
+      error,
+      count,
+    } = await supabaseAdmin
       .from('agent_sessions')
       .select('*, agents(name, type)', { count: 'exact' })
       .eq('business_id', businessId)
@@ -448,10 +453,11 @@ router.get('/business/:businessId/agent-sessions',
 );
 
 // Get agent traces for debugging
-router.get('/business/:businessId/agent-traces/:sessionId',
+router.get(
+  '/business/:businessId/agent-traces/:sessionId',
   authenticate,
   requireBusinessAccess,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<Response | void> => {
     const { businessId, sessionId } = req.params;
 
     const { data: traces, error } = await supabaseAdmin
@@ -475,9 +481,10 @@ router.get('/business/:businessId/agent-traces/:sessionId',
 );
 
 // Get agent templates
-router.get('/agent-templates',
+router.get(
+  '/agent-templates',
   authenticate,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
+  asyncHandler(async (_req: AuthRequest, res: Response): Promise<Response | void> => {
     res.json({
       success: true,
       templates: AGENT_TEMPLATES,
@@ -487,21 +494,22 @@ router.get('/agent-templates',
 );
 
 // Test agent configuration
-router.post('/business/:businessId/agent/:agentId/test',
+router.post(
+  '/business/:businessId/agent/:agentId/test',
   authenticate,
   requireBusinessAccess,
-  asyncHandler(async (req: AuthRequest, res: Response) => {
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<Response | void> => {
     const { businessId, agentId } = req.params;
     const { testMessage = 'Hello, can you help me?' } = req.body;
 
     const agentService = new OpenAIAgentService({
-      businessId,
-      sessionId: 'test-' + uuidv4(),
+      businessId: businessId!,
+      sessionId: `test-${uuidv4()}`,
       customerId: 'test-user',
     });
 
     try {
-      const result = await agentService.runAgent(agentId, testMessage, {
+      const result = await agentService.runAgent(agentId!, testMessage, {
         maxIterations: 3,
       });
 
@@ -509,8 +517,8 @@ router.post('/business/:businessId/agent/:agentId/test',
         success: true,
         test: {
           input: testMessage,
-          output: (result as any).finalOutput || result,
-          usage: (result as any).usage || {},
+          output: result.finalOutput || result,
+          usage: result.usage || {},
         },
       });
     } catch (error) {

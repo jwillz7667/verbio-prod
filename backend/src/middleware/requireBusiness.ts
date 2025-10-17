@@ -21,11 +21,7 @@ declare global {
   }
 }
 
-export const requireBusinessMiddleware = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const requireBusinessMiddleware = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     // Check if user is authenticated
     if (!req.user || !req.user.userId) {
@@ -33,9 +29,8 @@ export const requireBusinessMiddleware = async (
     }
 
     // Get business ID from header, query, or body
-    let businessId = req.headers['x-business-id'] as string ||
-                     req.query.businessId as string ||
-                     req.body?.businessId as string;
+    const businessId =
+      (req.headers['x-business-id'] as string) || (req.query.businessId as string) || (req.body?.businessId as string);
 
     // If no business ID provided, try to get the user's default business
     if (!businessId) {
@@ -55,13 +50,17 @@ export const requireBusinessMiddleware = async (
       }
 
       // Use the first (or only) business
+      const firstBusiness = businesses[0];
+      if (!firstBusiness) {
+        throw new AppError('No business found for this user', 404);
+      }
       req.business = {
-        id: businesses[0].id,
-        name: businesses[0].name,
+        id: firstBusiness.id,
+        name: firstBusiness.name,
         userId: req.user.userId,
-        dataJson: businesses[0].data_json,
-        stripeCustomerId: businesses[0].stripe_customer_id,
-        subscriptionTier: businesses[0].subscription_tier,
+        dataJson: firstBusiness.data_json,
+        stripeCustomerId: firstBusiness.stripe_customer_id,
+        subscriptionTier: firstBusiness.subscription_tier,
       };
     } else {
       // Verify that the business belongs to the user

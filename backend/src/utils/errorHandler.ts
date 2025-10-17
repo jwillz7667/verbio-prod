@@ -1,20 +1,17 @@
 import { Request, Response, NextFunction } from 'express';
-import { logger, logError } from './logger';
 import * as Sentry from '@sentry/node';
+import { logger, logError } from './logger';
 
 export class CustomError extends Error {
   public statusCode: number;
+
   public code?: string;
+
   public details?: any;
+
   public isOperational: boolean;
 
-  constructor(
-    message: string,
-    statusCode: number = 500,
-    code?: string,
-    details?: any,
-    isOperational: boolean = true
-  ) {
+  constructor(message: string, statusCode: number = 500, code?: string, details?: any, isOperational: boolean = true) {
     super(message);
     this.name = this.constructor.name;
     this.statusCode = statusCode;
@@ -128,12 +125,7 @@ const normalizeError = (err: any): CustomError => {
   return new CustomError(message, statusCode, err.code);
 };
 
-export const errorHandler = (
-  err: Error | any,
-  req: Request,
-  res: Response,
-  _next: NextFunction
-): void => {
+export const errorHandler = (err: Error | any, req: Request, res: Response, _next: NextFunction): void => {
   const normalizedError = normalizeError(err);
 
   logError(normalizedError, {
@@ -174,12 +166,12 @@ export const errorHandler = (
     },
   };
 
-  if (process.env['NODE_ENV'] === 'development') {
+  if (process.env.NODE_ENV === 'development') {
     response.error.details = normalizedError.details;
     response.error.stack = normalizedError.stack;
   }
 
-  if (statusCode === 500 && process.env['NODE_ENV'] === 'production') {
+  if (statusCode === 500 && process.env.NODE_ENV === 'production') {
     response.error.message = 'Internal server error';
     delete response.error.details;
   }
@@ -187,10 +179,8 @@ export const errorHandler = (
   res.status(statusCode).json(response);
 };
 
-export const asyncHandler = (fn: Function) => {
-  return (req: Request, res: Response, next: NextFunction) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
+export const asyncHandler = (fn: Function) => (req: Request, res: Response, next: NextFunction) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
 };
 
 export const handleWebSocketError = (ws: any, error: Error | any, context?: any): void => {
@@ -203,13 +193,15 @@ export const handleWebSocketError = (ws: any, error: Error | any, context?: any)
 
   if (ws && ws.readyState === ws.OPEN) {
     try {
-      ws.send(JSON.stringify({
-        type: 'error',
-        error: {
-          message: normalizedError.message,
-          code: normalizedError.code,
-        },
-      }));
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          error: {
+            message: normalizedError.message,
+            code: normalizedError.code,
+          },
+        })
+      );
     } catch (sendError) {
       logger.error('Failed to send error to WebSocket client', { error: sendError });
     }

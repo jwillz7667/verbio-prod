@@ -21,7 +21,7 @@ const customFormat = winston.format.combine(
 const consoleFormat = winston.format.combine(
   winston.format.colorize(),
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-  winston.format.printf(({ timestamp, level, message, metadata, ...rest }) => {
+  winston.format.printf(({ timestamp, level, message, _metadata, ...rest }) => {
     let msg = `${timestamp} [${level}]: ${message}`;
     if (Object.keys(rest).length > 0) {
       msg += ` ${JSON.stringify(rest)}`;
@@ -83,9 +83,7 @@ export const streamLogger = {
   },
 };
 
-export const createChildLogger = (module: string) => {
-  return logger.child({ module });
-};
+export const createChildLogger = (module: string) => logger.child({ module });
 
 export const logRequest = (req: any, message: string, metadata?: any) => {
   logger.info(message, {

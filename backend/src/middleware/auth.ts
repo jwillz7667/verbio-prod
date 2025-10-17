@@ -20,12 +20,12 @@ export const extractToken = (req: AuthRequest): string | null => {
     return authHeader.substring(7);
   }
 
-  if (req.cookies && req.cookies['token']) {
-    return req.cookies['token'];
+  if (req.cookies && req.cookies.token) {
+    return req.cookies.token;
   }
 
-  if (req.query && req.query['token'] && typeof req.query['token'] === 'string') {
-    return req.query['token'];
+  if (req.query && req.query.token && typeof req.query.token === 'string') {
+    return req.query.token;
   }
 
   return null;
@@ -46,19 +46,14 @@ export const verifyToken = (token: string): IJWTPayload => {
   }
 };
 
-export const generateToken = (payload: Omit<IJWTPayload, 'iat' | 'exp'>): string => {
-  return jwt.sign(payload, JWT_SECRET, {
+export const generateToken = (payload: Omit<IJWTPayload, 'iat' | 'exp'>): string =>
+  jwt.sign(payload, JWT_SECRET, {
     expiresIn: JWT_EXPIRY as string | number,
     issuer: 'verbio-backend',
     audience: 'verbio-app',
   } as jwt.SignOptions);
-};
 
-export const authenticate = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const token = extractToken(req);
 
@@ -110,11 +105,7 @@ export const authenticate = async (
   }
 };
 
-export const optionalAuthenticate = async (
-  req: AuthRequest,
-  _res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const optionalAuthenticate = async (req: AuthRequest, _res: Response, next: NextFunction): Promise<void> => {
   try {
     const token = extractToken(req);
 
@@ -133,17 +124,13 @@ export const optionalAuthenticate = async (
   }
 };
 
-export const requireBusinessAccess = async (
-  req: AuthRequest,
-  res: Response,
-  next: NextFunction
-): Promise<void> => {
+export const requireBusinessAccess = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!req.user) {
       throw new AuthenticationError('Authentication required');
     }
 
-    const businessId = req.params['businessId'] || req.body['businessId'] || req.query['businessId'];
+    const businessId = req.params.businessId || req.body.businessId || req.query.businessId;
 
     if (!businessId) {
       return next();
@@ -177,10 +164,7 @@ export const requireBusinessAccess = async (
   }
 };
 
-export const refreshToken = async (
-  req: AuthRequest,
-  res: Response
-): Promise<void> => {
+export const refreshToken = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (!req.user) {
       throw new AuthenticationError('No user in request');

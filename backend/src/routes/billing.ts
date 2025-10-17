@@ -41,12 +41,12 @@ router.get('/balance', async (req: Request, res: Response, next: NextFunction) =
 /**
  * Get available subscription plans
  */
-router.get('/plans', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/plans', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const plans = await subscriptionService.getPlans(true);
 
     res.json({
-      plans: plans.map(plan => ({
+      plans: plans.map((plan) => ({
         id: plan.id,
         name: plan.name,
         displayName: plan.displayName,
@@ -68,12 +68,12 @@ router.get('/plans', async (req: Request, res: Response, next: NextFunction) => 
 /**
  * Get available token packages
  */
-router.get('/packages', async (req: Request, res: Response, next: NextFunction) => {
+router.get('/packages', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const packages = await subscriptionService.getTokenPackages(true);
 
     res.json({
-      packages: packages.map(pkg => ({
+      packages: packages.map((pkg) => ({
         id: pkg.id,
         name: pkg.name,
         displayName: pkg.displayName,
@@ -112,13 +112,15 @@ router.get('/subscription', async (req: Request, res: Response, next: NextFuncti
       subscription: {
         id: subscription.id,
         planId: subscription.planId,
-        plan: subscription.plan ? {
-          name: subscription.plan.name,
-          displayName: subscription.plan.displayName,
-          tokensPerMonth: subscription.plan.tokensPerMonth,
-          priceMonthly: subscription.plan.priceMonthly,
-          priceYearly: subscription.plan.priceYearly,
-        } : null,
+        plan: subscription.plan
+          ? {
+              name: subscription.plan.name,
+              displayName: subscription.plan.displayName,
+              tokensPerMonth: subscription.plan.tokensPerMonth,
+              priceMonthly: subscription.plan.priceMonthly,
+              priceYearly: subscription.plan.priceYearly,
+            }
+          : null,
         status: subscription.status,
         currentPeriodStart: subscription.currentPeriodStart,
         currentPeriodEnd: subscription.currentPeriodEnd,
@@ -190,12 +192,14 @@ router.delete('/subscription', async (req: Request, res: Response, next: NextFun
       message: cancelImmediately
         ? 'Subscription canceled immediately'
         : 'Subscription will be canceled at the end of the current period',
-      subscription: subscription ? {
-        id: subscription.id,
-        status: subscription.status,
-        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-        currentPeriodEnd: subscription.currentPeriodEnd,
-      } : null,
+      subscription: subscription
+        ? {
+            id: subscription.id,
+            status: subscription.status,
+            cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+            currentPeriodEnd: subscription.currentPeriodEnd,
+          }
+        : null,
     });
   } catch (error) {
     logger.error('Error canceling subscription', { error, businessId: req.business?.id });
@@ -219,11 +223,7 @@ router.post('/purchase', async (req: Request, res: Response, next: NextFunction)
       throw new AppError('Package ID and payment method are required', 400);
     }
 
-    const result = await subscriptionService.purchaseTokenPackage(
-      businessId,
-      packageId,
-      paymentMethodId
-    );
+    const result = await subscriptionService.purchaseTokenPackage(businessId, packageId, paymentMethodId);
 
     res.json({
       success: result.success,
@@ -255,7 +255,7 @@ router.get('/transactions', async (req: Request, res: Response, next: NextFuncti
     });
 
     res.json({
-      transactions: transactions.map(tx => ({
+      transactions: transactions.map((tx) => ({
         id: tx.id,
         type: tx.type,
         amount: tx.amount,

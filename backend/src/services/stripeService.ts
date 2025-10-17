@@ -33,23 +33,24 @@ export class StripeService {
 
       const idempotencyKey = uuidv4();
 
-      const source = process.env['NODE_ENV'] === 'production'
-        ? 'tok_visa'
-        : 'tok_visa';
+      const source = process.env.NODE_ENV === 'production' ? 'tok_visa' : 'tok_visa';
 
-      const charge = await stripe.charges.create({
-        amount: amountCents,
-        currency: 'usd',
-        source,
-        description: metadata.description || `Order ${metadata.orderId}`,
-        metadata: {
-          ...metadata,
-          environment: process.env['NODE_ENV'] || 'development',
-          timestamp: new Date().toISOString(),
+      const charge = await stripe.charges.create(
+        {
+          amount: amountCents,
+          currency: 'usd',
+          source,
+          description: metadata.description || `Order ${metadata.orderId}`,
+          metadata: {
+            ...metadata,
+            environment: process.env.NODE_ENV || 'development',
+            timestamp: new Date().toISOString(),
+          },
         },
-      }, {
-        idempotencyKey,
-      });
+        {
+          idempotencyKey,
+        }
+      );
 
       logger.info('Stripe charge created', {
         chargeId: charge.id,
@@ -76,17 +77,13 @@ export class StripeService {
 
   async handleWebhook(rawBody: Buffer, signature: string): Promise<void> {
     try {
-      const webhookSecret = process.env['STRIPE_WEBHOOK_SECRET'];
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
       if (!webhookSecret) {
         throw new AppError('Stripe webhook secret not configured', 500);
       }
 
-      const event = stripe.webhooks.constructEvent(
-        rawBody,
-        signature,
-        webhookSecret
-      );
+      const event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
 
       logger.info('Stripe webhook received', {
         type: event.type,
@@ -95,25 +92,25 @@ export class StripeService {
 
       switch (event.type) {
         case 'charge.succeeded': {
-          const charge = event.data.object as Stripe.Charge;
+          const charge = event.data.object;
           await this.handleChargeSucceeded(charge);
           break;
         }
 
         case 'charge.failed': {
-          const charge = event.data.object as Stripe.Charge;
+          const charge = event.data.object;
           await this.handleChargeFailed(charge);
           break;
         }
 
         case 'charge.refunded': {
-          const charge = event.data.object as Stripe.Charge;
+          const charge = event.data.object;
           await this.handleChargeRefunded(charge);
           break;
         }
 
         case 'payment_intent.succeeded': {
-          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          const paymentIntent = event.data.object;
           logger.info('Payment intent succeeded', {
             id: paymentIntent.id,
             amount: paymentIntent.amount,
@@ -122,7 +119,7 @@ export class StripeService {
         }
 
         case 'payment_intent.payment_failed': {
-          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          const paymentIntent = event.data.object;
           logger.warn('Payment intent failed', {
             id: paymentIntent.id,
             error: paymentIntent.last_payment_error,
@@ -190,8 +187,8 @@ export class StripeService {
           });
         }
       } else {
-        const orderId = charge.metadata?.['orderId'];
-        const businessId = charge.metadata?.['businessId'];
+        const orderId = charge.metadata?.orderId;
+        const businessId = charge.metadata?.businessId;
 
         if (orderId && businessId) {
           const { data: newPayment, error: insertError } = await supabaseAdmin
@@ -363,10 +360,7 @@ export class StripeService {
     }
   }
 
-  async createPaymentIntent(
-    amountCents: number,
-    metadata: ChargeMetadata
-  ): Promise<Stripe.PaymentIntent> {
+  async createPaymentIntent(amountCents: number, metadata: ChargeMetadata): Promise<Stripe.PaymentIntent> {
     try {
       if (!config.get('STRIPE_SECRET_KEY')) {
         throw new AppError('Stripe not configured', 500);
@@ -380,7 +374,7 @@ export class StripeService {
         },
         metadata: {
           ...metadata,
-          environment: process.env['NODE_ENV'] || 'development',
+          environment: process.env.NODE_ENV || 'development',
         },
       });
 

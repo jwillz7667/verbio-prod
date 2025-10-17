@@ -1,268 +1,403 @@
-import { WebSocket } from 'ws';
-import { Server } from 'http';
-import { parse } from 'url';
-import { supabaseAdmin as supabase } from '../config/supabase';
+import { IncomingMessage } from 'http';
+import type { Duplex } from 'stream';
+import { URL } from 'url';
+import { WebSocket, WebSocketServer } from 'ws';
+import { twiml } from 'twilio';
+import { config } from '../config/env';
+import logger, { logTwilio } from '../utils/logger';
+import { handleConnection } from './realtimeHandler';
 import { getTwilioClient } from '../services/twilioService';
-const twilioClient = getTwilioClient();
-import { OpenAIRealtimeService } from '../services/openaiRealtimeService';
-import logger from '../utils/logger';
 
-interface VoiceAgentConnection {
-  ws: WebSocket;
+const { VoiceResponse } = twiml;
+
+type VoiceAgentStatus = 'pending' | 'initiated' | 'streaming' | 'completed' | 'failed';
+
+interface VoiceAgentSession {
   callId: string;
   businessId: string;
-  openaiService?: OpenAIRealtimeService;
-  twilioCallSid?: string;
-  phoneNumber?: string;
+  phoneNumber: string;
+  agentType?: string;
+  metadata?: Record<string, unknown>;
+  callSid?: string;
+  streamSid?: string;
+  status: VoiceAgentStatus;
+  createdAt: number;
+  lastUpdatedAt: number;
 }
 
-export class VoiceAgentHandler {
-  private connections: Map<string, VoiceAgentConnection> = new Map();
+interface OutboundCallOptions {
+  agentType?: string;
+  metadata?: Record<string, unknown>;
+}
 
-  setupWebSocket(server: Server) {
-    const wss = new WebSocket.Server({
-      server,
-      path: '/ws/voice-agent',
-      verifyClient: (info, cb) => {
-        const { query } = parse(info.req.url || '', true);
-        const businessId = query['businessId'] as string;
-        const callId = query['callId'] as string;
+interface OutboundCallResult {
+  callId: string;
+  callSid: string;
+}
 
-        if (!businessId || !callId) {
-          cb(false, 401, 'Unauthorized');
-          return;
-        }
+const SESSION_TTL_MS = 1000 * 60 * 30; // 30 minutes
+const COMPLETED_SESSION_TTL_MS = 1000 * 60 * 5; // 5 minutes post-completion
 
-        cb(true);
-      }
-    });
+const allowedOrigins = [
+  'https://media.twiliocdn.com',
+  'https://sdk.twilio.com',
+  'media.twiliocdn.com',
+  'sdk.twilio.com',
+];
 
-    wss.on('connection', async (ws: WebSocket, req) => {
-      const { query } = parse(req.url || '', true);
-      const businessId = query['businessId'] as string;
-      const callId = query['callId'] as string;
+const sessions = new Map<string, VoiceAgentSession>();
 
-      logger.info(`Voice agent WebSocket connected for call ${callId}`);
+const voiceAgentWss = new WebSocketServer({ noServer: true });
 
-      const connection: VoiceAgentConnection = {
-        ws,
-        callId,
-        businessId
-      };
+voiceAgentWss.on('connection', (ws: WebSocket, request: IncomingMessage) => {
+  try {
+    const url = new URL(request.url || '', `http://${request.headers.host ?? 'localhost'}`);
+    const callId = url.searchParams.get('callId');
 
-      this.connections.set(callId, connection);
-
-      ws.on('message', async (data: string) => {
-        try {
-          const message = JSON.parse(data.toString());
-          await this.handleMessage(callId, message);
-        } catch (error) {
-          logger.error('Error handling voice agent message:', error);
-        }
-      });
-
-      ws.on('close', () => {
-        this.handleDisconnect(callId);
-      });
-
-      ws.on('error', (error) => {
-        logger.error(`WebSocket error for call ${callId}:`, error);
-        this.handleDisconnect(callId);
-      });
-    });
-  }
-
-  async initiateOutboundCall(
-    phoneNumber: string,
-    callId: string,
-    businessId: string,
-    settings: any
-  ) {
-    try {
-      const connection = this.connections.get(callId);
-      if (!connection) {
-        throw new Error('No WebSocket connection found');
-      }
-
-      // Initialize OpenAI Realtime Service
-      const openaiService = new OpenAIRealtimeService({
-        voice: settings.voice || 'alloy',
-        systemPrompt: settings.systemPrompt,
-        temperature: settings.temperature,
-        onTranscription: (role: string, content: string) => {
-          this.sendTranscription(callId, role, content);
-        },
-        onError: (error: string) => {
-          this.sendError(callId, error);
-        }
-      });
-
-      await openaiService.connect();
-      connection.openaiService = openaiService;
-
-      // Create Twilio call with WebSocket stream
-      const call = await twilioClient.calls.create({
-        to: phoneNumber,
-        from: process.env['TWILIO_PHONE_NUMBER'] || '',
-        url: `${process.env['BASE_URL']}/api/twilio/voice-agent-twiml?callId=${callId}`,
-        statusCallback: `${process.env['BASE_URL']}/api/twilio/voice-agent-status?callId=${callId}`,
-        statusCallbackEvent: ['initiated', 'answered', 'completed'],
-        machineDetection: 'DetectMessageEnd'
-      });
-
-      connection.twilioCallSid = call.sid;
-      connection.phoneNumber = phoneNumber;
-
-      // Log call initiation
-      await supabase
-        .from('call_logs')
-        .insert({
-          business_id: businessId,
-          call_sid: call.sid,
-          phone_number: phoneNumber,
-          direction: 'outbound',
-          status: 'initiated',
-          agent_type: 'voice_agent',
-          metadata: {
-            callId,
-            settings
-          }
-        });
-
-      logger.info(`Initiated outbound call ${call.sid} to ${phoneNumber}`);
-      return { success: true, callSid: call.sid };
-
-    } catch (error) {
-      logger.error('Error initiating outbound call:', error);
-      throw error;
-    }
-  }
-
-  async handleTwilioStream(callId: string, streamData: any) {
-    const connection = this.connections.get(callId);
-    if (!connection || !connection.openaiService) {
-      logger.warn(`No connection found for call ${callId}`);
+    if (!callId) {
+      logger.warn('Voice agent connection missing callId');
+      ws.close(1008, 'Missing callId');
       return;
     }
 
-    try {
-      // Forward audio to OpenAI
-      if (streamData.event === 'media' && streamData.media) {
-        await connection.openaiService.sendAudio(streamData.media.payload);
-      }
-    } catch (error) {
-      logger.error(`Error handling Twilio stream for call ${callId}:`, error);
-    }
-  }
-
-  private async handleMessage(callId: string, message: any) {
-    const connection = this.connections.get(callId);
-    if (!connection) return;
-
-    switch (message.type) {
-      case 'end-call':
-        await this.endCall(callId);
-        break;
-
-      case 'toggle-mute':
-        if (connection.openaiService) {
-          // Handle mute functionality
-          connection.openaiService.setMuted(message.muted);
-        }
-        break;
-
-      default:
-        logger.warn(`Unknown message type: ${message.type}`);
-    }
-  }
-
-  private async endCall(callId: string) {
-    const connection = this.connections.get(callId);
-    if (!connection) return;
-
-    try {
-      // End Twilio call
-      if (connection.twilioCallSid) {
-        await twilioClient.calls(connection.twilioCallSid).update({
-          status: 'completed'
-        });
-      }
-
-      // Close OpenAI connection
-      if (connection.openaiService) {
-        connection.openaiService.disconnect();
-      }
-
-      // Update call log
-      if (connection.twilioCallSid) {
-        await supabase
-          .from('call_logs')
-          .update({
-            status: 'completed',
-            ended_at: new Date().toISOString()
-          })
-          .eq('call_sid', connection.twilioCallSid);
-      }
-
-      // Notify client
-      connection.ws.send(JSON.stringify({
-        type: 'call-ended',
-        timestamp: new Date().toISOString()
-      }));
-
-      // Close WebSocket
-      connection.ws.close();
-      this.connections.delete(callId);
-
-    } catch (error) {
-      logger.error(`Error ending call ${callId}:`, error);
-    }
-  }
-
-  private handleDisconnect(callId: string) {
-    const connection = this.connections.get(callId);
-    if (!connection) return;
-
-    if (connection.openaiService) {
-      connection.openaiService.disconnect();
+    const session = sessions.get(callId);
+    if (!session) {
+      logger.warn('No session found for voice agent connection', { callId });
+    } else {
+      session.status = 'streaming';
+      session.streamSid = url.searchParams.get('streamSid') ?? undefined;
+      session.lastUpdatedAt = Date.now();
+      sessions.set(callId, session);
+      logger.info('Voice agent WebSocket connected', {
+        callId,
+        businessId: session.businessId,
+        streamSid: session.streamSid,
+      });
     }
 
-    this.connections.delete(callId);
-    logger.info(`Voice agent disconnected for call ${callId}`);
+    ws.on('close', (code: number, reason: Buffer) => {
+      logger.info('Voice agent WebSocket closed', {
+        callId,
+        code,
+        reason: reason?.toString(),
+      });
+
+      const currentSession = sessions.get(callId);
+      if (currentSession && currentSession.status !== 'completed') {
+        currentSession.status = 'completed';
+        currentSession.lastUpdatedAt = Date.now();
+        sessions.set(callId, currentSession);
+      }
+    });
+
+    ws.on('error', (error: Error) => {
+      logger.error('Voice agent WebSocket error', { callId, error: error.message });
+    });
+
+    void handleConnection(ws, request).catch((error: unknown) => {
+      logger.error('Error handling voice agent WebSocket connection', {
+        callId,
+        error,
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close(1011, 'Internal server error');
+      }
+    });
+  } catch (error) {
+    logger.error('Failed to initialize voice agent WebSocket connection', { error });
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.close(1011, 'Internal server error');
+    }
+  }
+});
+
+const cleanupInterval = setInterval(() => {
+  const now = Date.now();
+  for (const [callId, session] of sessions.entries()) {
+    const ttl =
+      session.status === 'completed' || session.status === 'failed' ? COMPLETED_SESSION_TTL_MS : SESSION_TTL_MS;
+
+    if (now - session.lastUpdatedAt > ttl) {
+      logger.info('Cleaning up stale voice agent session', {
+        callId,
+        status: session.status,
+        createdAt: session.createdAt,
+      });
+      sessions.delete(callId);
+    }
+  }
+}, 60000);
+
+if (typeof cleanupInterval.unref === 'function') {
+  cleanupInterval.unref();
+}
+
+function ensureTwilioConfiguration(): void {
+  const phoneNumber = config.get('TWILIO_PHONE_NUMBER');
+  if (!phoneNumber) {
+    throw new Error('Twilio phone number not configured');
   }
 
-  private sendTranscription(callId: string, role: string, content: string) {
-    const connection = this.connections.get(callId);
-    if (!connection) return;
-
-    connection.ws.send(JSON.stringify({
-      type: 'transcription',
-      role,
-      content,
-      timestamp: new Date().toISOString()
-    }));
-  }
-
-  private sendError(callId: string, error: string) {
-    const connection = this.connections.get(callId);
-    if (!connection) return;
-
-    connection.ws.send(JSON.stringify({
-      type: 'error',
-      message: error,
-      timestamp: new Date().toISOString()
-    }));
-  }
-
-  getTwilioResponseForCall(callId: string): string {
-    // Generate TwiML response for Twilio to stream audio
-    return `<?xml version="1.0" encoding="UTF-8"?>
-    <Response>
-      <Connect>
-        <Stream url="wss://${process.env['BASE_URL']?.replace('https://', '')}/ws/twilio-stream?callId=${callId}" />
-      </Connect>
-    </Response>`;
+  const backendUrl = config.get('BACKEND_URL');
+  if (!backendUrl) {
+    throw new Error('Backend URL not configured');
   }
 }
 
-export const voiceAgentHandler = new VoiceAgentHandler();
+function buildBackendUrl(pathname: string, query: Record<string, string | undefined>): string {
+  const backendUrl = config.get('BACKEND_URL') || 'https://verbio.app';
+  const url = new URL(pathname, backendUrl.endsWith('/') ? backendUrl : `${backendUrl}/`);
+  Object.entries(query).forEach(([key, value]) => {
+    if (value) {
+      url.searchParams.set(key, value);
+    }
+  });
+  return url.toString();
+}
+
+function toWebSocketBase(): string {
+  const backendUrl = config.get('BACKEND_URL') || 'https://verbio.app';
+  const parsed = new URL(backendUrl);
+  parsed.protocol = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+  parsed.pathname = parsed.pathname.replace(/\/$/, '');
+  return `${parsed.protocol}//${parsed.host}`;
+}
+
+function buildWebSocketUrl(session: VoiceAgentSession): string {
+  const base = toWebSocketBase();
+  const url = new URL('/ws/voice-agent', base);
+  url.searchParams.set('businessId', session.businessId);
+  url.searchParams.set('callId', session.callId);
+  url.searchParams.set('from', session.phoneNumber);
+  url.searchParams.set('direction', 'outbound');
+  if (session.agentType) {
+    url.searchParams.set('agentType', session.agentType);
+  }
+  if (session.callSid) {
+    url.searchParams.set('callSid', session.callSid);
+  }
+  return url.toString();
+}
+
+function upsertSession(session: VoiceAgentSession): VoiceAgentSession {
+  sessions.set(session.callId, session);
+  return session;
+}
+
+function updateSession(callId: string, updates: Partial<VoiceAgentSession>): VoiceAgentSession | undefined {
+  const existing = sessions.get(callId);
+  if (!existing) {
+    return undefined;
+  }
+  const updated: VoiceAgentSession = {
+    ...existing,
+    ...updates,
+    lastUpdatedAt: Date.now(),
+  };
+  sessions.set(callId, updated);
+  return updated;
+}
+
+function mapTwilioStatus(status: string): VoiceAgentStatus {
+  const normalized = status.toLowerCase();
+  if (normalized === 'completed') {
+    return 'completed';
+  }
+  if (['failed', 'busy', 'no-answer', 'canceled'].includes(normalized)) {
+    return 'failed';
+  }
+  if (['ringing', 'in-progress', 'answered', 'queued', 'initiated'].includes(normalized)) {
+    return 'streaming';
+  }
+  return 'pending';
+}
+
+async function initiateOutboundCall(
+  phoneNumber: string,
+  callId: string,
+  businessId: string,
+  options: OutboundCallOptions = {}
+): Promise<OutboundCallResult> {
+  ensureTwilioConfiguration();
+
+  const twilioClient = getTwilioClient();
+  const fromNumber = config.get('TWILIO_PHONE_NUMBER')!;
+
+  const session: VoiceAgentSession = {
+    callId,
+    businessId,
+    phoneNumber,
+    agentType: options.agentType,
+    metadata: options.metadata,
+    status: 'pending',
+    createdAt: Date.now(),
+    lastUpdatedAt: Date.now(),
+  };
+
+  upsertSession(session);
+
+  const twimlUrl = buildBackendUrl('/api/calls/twilio/voice-agent-twiml', {
+    callId,
+    businessId,
+    agentType: options.agentType,
+  });
+
+  const statusCallbackUrl = buildBackendUrl('/api/calls/twilio/status', {
+    callId,
+    businessId,
+  });
+
+  const call = await twilioClient.calls.create({
+    to: phoneNumber,
+    from: fromNumber,
+    url: twimlUrl,
+    statusCallback: statusCallbackUrl,
+    statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed', 'failed', 'busy', 'no-answer'],
+  });
+
+  logTwilio('voice_agent_outbound_call_created', call.sid, {
+    callId,
+    to: phoneNumber,
+    from: fromNumber,
+    businessId,
+  });
+
+  updateSession(callId, {
+    status: 'initiated',
+    callSid: call.sid,
+  });
+
+  return {
+    callId,
+    callSid: call.sid,
+  };
+}
+
+function getTwilioResponseForCall(callId: string): string {
+  const session = sessions.get(callId);
+
+  if (!session) {
+    logger.warn('No session found for voice agent TwiML request', { callId });
+    const response = new VoiceResponse();
+    (response as any).say('We are unable to locate your session. Please try again later.');
+    (response as any).hangup();
+    return response.toString();
+  }
+
+  const wsUrl = buildWebSocketUrl(session);
+  const response = new VoiceResponse();
+  const connect = (response as any).connect();
+  const stream = connect.stream({
+    url: wsUrl,
+    track: 'both_tracks',
+  });
+
+  stream.parameter({ name: 'callId', value: session.callId });
+  stream.parameter({ name: 'businessId', value: session.businessId });
+  if (session.agentType) {
+    stream.parameter({ name: 'agentType', value: session.agentType });
+  }
+  stream.parameter({ name: 'direction', value: 'outbound' });
+  stream.parameter({ name: 'from', value: session.phoneNumber });
+  stream.parameter({ name: 'callSid', value: session.callSid ?? '{{CallSid}}' });
+
+  logTwilio('voice_agent_twiml_generated', session.callSid, {
+    callId: session.callId,
+    businessId: session.businessId,
+    agentType: session.agentType,
+    wsUrl,
+  });
+
+  updateSession(callId, { status: 'streaming' });
+
+  return response.toString();
+}
+
+function handleCallStatusUpdate(
+  callId: string,
+  status: string,
+  details: { callSid?: string; recordingUrl?: string; durationSeconds?: number } = {}
+): void {
+  const session = sessions.get(callId);
+  if (!session) {
+    logger.debug('Voice agent status update received for non-existent session', { callId, status });
+    return;
+  }
+
+  const mappedStatus = mapTwilioStatus(status);
+
+  updateSession(callId, {
+    status: mappedStatus,
+    callSid: details.callSid ?? session.callSid,
+  });
+
+  logTwilio('voice_agent_status_update', details.callSid ?? session.callSid, {
+    callId,
+    status,
+    mappedStatus,
+    recordingUrl: details.recordingUrl,
+    durationSeconds: details.durationSeconds,
+  });
+
+  if (mappedStatus === 'completed' || mappedStatus === 'failed') {
+    // Mark for cleanup after TTL
+    updateSession(callId, { lastUpdatedAt: Date.now() });
+  }
+}
+
+function cleanupSession(callId: string): void {
+  sessions.delete(callId);
+}
+
+function handleUpgrade(request: IncomingMessage, socket: Duplex, head: Buffer): void {
+  try {
+    const origin = request.headers.origin || request.headers.host || '';
+    if (config.isProduction()) {
+      const isAllowed = allowedOrigins.some((allowed) => origin === allowed || origin.includes(allowed));
+      if (!isAllowed) {
+        logger.warn('Rejected voice agent WebSocket upgrade due to invalid origin', { origin });
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+    }
+
+    voiceAgentWss.handleUpgrade(request, socket, head, (ws) => {
+      voiceAgentWss.emit('connection', ws, request);
+    });
+  } catch (error) {
+    logger.error('Voice agent WebSocket upgrade failed', { error });
+    try {
+      socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+    } catch (writeError) {
+      logger.error('Failed to write error response for voice agent upgrade', { writeError });
+    } finally {
+      socket.destroy();
+    }
+  }
+}
+
+function getSession(callId: string): VoiceAgentSession | undefined {
+  return sessions.get(callId);
+}
+
+function hasSession(callId: string): boolean {
+  return sessions.has(callId);
+}
+
+function resetSessions(): void {
+  sessions.clear();
+}
+
+export const voiceAgentHandler = {
+  handleUpgrade,
+  initiateOutboundCall,
+  getTwilioResponseForCall,
+  handleCallStatusUpdate,
+  cleanupSession,
+  getSession,
+  hasSession,
+  __reset: resetSessions,
+};
+
+export type { VoiceAgentSession, VoiceAgentStatus };

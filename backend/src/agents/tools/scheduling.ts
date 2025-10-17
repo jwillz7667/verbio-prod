@@ -1,8 +1,8 @@
 import { tool } from '@openai/agents';
 import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
 import { supabaseAdmin } from '../../config/supabase';
 import Logger from '../../utils/logger';
-import { v4 as uuidv4 } from 'uuid';
 
 const logger = Logger;
 
@@ -12,9 +12,9 @@ export class SchedulingTool {
     description: 'Check if the business is available on a specific date and time',
     parameters: z.object({
       date: z.string().describe('Date to check (YYYY-MM-DD format)'),
-      time: z.string().optional().describe('Time to check (HH:MM format)'),
-      service: z.string().optional().describe('Service to check availability for'),
-      duration: z.number().optional().describe('Duration in minutes'),
+      time: z.string().nullable().describe('Time to check (HH:MM format)'),
+      service: z.string().nullable().describe('Service to check availability for'),
+      duration: z.number().nullable().describe('Duration in minutes'),
     }),
     execute: async (input, context: any) => {
       try {
@@ -54,9 +54,10 @@ export class SchedulingTool {
             return {
               success: true,
               available: available && fitsInSchedule,
-              message: available && fitsInSchedule
-                ? `Available for ${input.duration} minutes starting at ${input.time}`
-                : `Not enough time available. We close at ${dayHours.close}`,
+              message:
+                available && fitsInSchedule
+                  ? `Available for ${input.duration} minutes starting at ${input.time}`
+                  : `Not enough time available. We close at ${dayHours.close}`,
               suggestedTime: !fitsInSchedule ? dayHours.open : null,
             };
           }
@@ -96,9 +97,9 @@ export class SchedulingTool {
       service: z.string().describe('Service or reason for appointment'),
       duration: z.number().default(30).describe('Duration in minutes'),
       customerName: z.string().describe('Customer name'),
-      customerPhone: z.string().optional().describe('Customer phone'),
-      customerEmail: z.string().optional().describe('Customer email'),
-      notes: z.string().optional().describe('Additional notes'),
+      customerPhone: z.string().nullable().describe('Customer phone'),
+      customerEmail: z.string().nullable().describe('Customer email'),
+      notes: z.string().nullable().describe('Additional notes'),
     }),
     execute: async (input, context: any) => {
       try {
@@ -107,12 +108,14 @@ export class SchedulingTool {
           business_id: context.businessId,
           customer_phone: input.customerPhone || context.customerId || 'unknown',
           customer_name: input.customerName,
-          items: [{
-            name: input.service,
-            quantity: 1,
-            price: 0,
-            duration: input.duration,
-          }],
+          items: [
+            {
+              name: input.service,
+              quantity: 1,
+              price: 0,
+              duration: input.duration,
+            },
+          ],
           total: 0,
           status: 'confirmed',
           payment_status: 'not_required',
@@ -171,7 +174,7 @@ export class SchedulingTool {
       appointmentId: z.string().describe('Appointment ID to reschedule'),
       newDate: z.string().describe('New appointment date (YYYY-MM-DD)'),
       newTime: z.string().describe('New appointment time (HH:MM)'),
-      reason: z.string().optional().describe('Reason for rescheduling'),
+      reason: z.string().nullable().describe('Reason for rescheduling'),
     }),
     execute: async (input, context: any) => {
       try {
@@ -245,7 +248,7 @@ export class SchedulingTool {
     description: 'Cancel an existing appointment',
     parameters: z.object({
       appointmentId: z.string().describe('Appointment ID to cancel'),
-      reason: z.string().optional().describe('Cancellation reason'),
+      reason: z.string().nullable().describe('Cancellation reason'),
     }),
     execute: async (input, context: any) => {
       try {

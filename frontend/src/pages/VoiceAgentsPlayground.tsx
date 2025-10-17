@@ -38,29 +38,21 @@ interface SessionConfig {
   };
   turnDetection: {
     type: 'server_vad' | 'semantic_vad' | 'none';
-    serverVad?: {
-      threshold: number;
-      prefixPaddingMs: number;
-      silenceDurationMs: number;
-    };
-    semanticVad?: {
-      eagerness: 'low' | 'medium' | 'high';
-    };
+    threshold?: number;
+    prefixPaddingMs?: number;
+    silenceDurationMs?: number;
+    createResponse?: boolean;
   };
   tools: Array<{
     name: string;
     description: string;
     parameters: Record<string, any>;
   }>;
-  temperature: number;
   maxResponseOutputTokens: number | 'inf';
   vadMode: 'server_vad' | 'semantic_vad' | 'disabled';
   modalities: string[];
-  responseModalities: string[];
   audioFormat: 'pcm16' | 'g711_ulaw' | 'g711_alaw';
   toolChoice: 'auto' | 'none' | 'required' | { type: 'function'; name: string };
-  parallelToolCalls: boolean;
-  audioBufferSizeSec: number;
   noiseReduction?: {
     enabled: boolean;
     strength: 'low' | 'medium' | 'high';
@@ -144,25 +136,17 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
     },
     turnDetection: {
       type: 'semantic_vad',
-      serverVad: {
-        threshold: 0.5,
-        prefixPaddingMs: 300,
-        silenceDurationMs: 500,
-      },
-      semanticVad: {
-        eagerness: 'medium',
-      },
+      threshold: 0.5,
+      prefixPaddingMs: 300,
+      silenceDurationMs: 500,
+      createResponse: true,
     },
     tools: [],
-    temperature: 0.8,
     maxResponseOutputTokens: 4096,
     vadMode: 'semantic_vad',
     modalities: ['text', 'audio'],
-    responseModalities: ['text', 'audio'],
     audioFormat: 'pcm16',
     toolChoice: 'auto',
-    parallelToolCalls: true,
-    audioBufferSizeSec: 1,
     noiseReduction: {
       enabled: true,
       strength: 'medium',
@@ -238,9 +222,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
             if (!exists) {
               return [...prev, recording];
             }
-            return prev.map((r) =>
-              r.recordingSid === recording.recordingSid ? recording : r
-            );
+            return prev.map((r) => (r.recordingSid === recording.recordingSid ? recording : r));
           });
 
           if (recording.status === 'completed' || recording.status === 'failed') {
@@ -417,10 +399,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
 
       // Initiate the call
       const response = await api.post('/api/calls/outbound', {
-        phoneNumber: `+1${phoneNumber}`,
-        config,
-        businessId: user?.businessId,
-        recording: recordingEnabled,
+        to: `+1${phoneNumber}`,
       });
 
       if (!response.data.success) {
@@ -573,20 +552,20 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                   connectionStatus === 'connected'
                     ? 'bg-green-500 animate-pulse'
                     : connectionStatus === 'connecting'
-                    ? 'bg-yellow-500 animate-pulse'
-                    : connectionStatus === 'error'
-                    ? 'bg-red-500'
-                    : 'bg-gray-400'
+                      ? 'bg-yellow-500 animate-pulse'
+                      : connectionStatus === 'error'
+                        ? 'bg-red-500'
+                        : 'bg-gray-400'
                 }`}
               />
               <span className="text-sm text-gray-600">
                 {connectionStatus === 'connected'
                   ? 'Connected'
                   : connectionStatus === 'connecting'
-                  ? 'Connecting...'
-                  : connectionStatus === 'error'
-                  ? 'Error'
-                  : 'Disconnected'}
+                    ? 'Connecting...'
+                    : connectionStatus === 'error'
+                      ? 'Error'
+                      : 'Disconnected'}
               </span>
             </div>
             {/* Connect/Disconnect Button */}
@@ -638,8 +617,8 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                       isCallActive
                         ? 'bg-red-600 hover:bg-red-700 text-white'
                         : isConnecting
-                        ? 'bg-gray-400 text-white cursor-wait'
-                        : 'bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-300'
+                          ? 'bg-gray-400 text-white cursor-wait'
+                          : 'bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-300'
                     }`}
                   >
                     {isCallActive ? (
@@ -674,11 +653,7 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                   />
                   <span className="text-sm text-gray-700">Enable Call Recording</span>
                 </label>
-                {isCallActive && (
-                  <span className="text-sm text-gray-500">
-                    {formatDuration(callDuration)}
-                  </span>
-                )}
+                {isCallActive && <span className="text-sm text-gray-500">{formatDuration(callDuration)}</span>}
               </div>
 
               {/* Audio Controls */}
@@ -687,7 +662,9 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                   <button
                     onClick={isRecording ? stopRecording : startRecording}
                     className={`p-2 rounded-lg transition-colors ${
-                      isRecording ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-600 hover:bg-gray-700 text-white'
+                      isRecording
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                        : 'bg-gray-600 hover:bg-gray-700 text-white'
                     }`}
                   >
                     {isRecording ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
@@ -703,7 +680,9 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                   <button
                     onClick={() => setSpeakerEnabled(!speakerEnabled)}
                     className={`p-2 rounded-lg transition-colors ${
-                      !speakerEnabled ? 'bg-red-600 hover:bg-red-700 text-white' : 'bg-gray-600 hover:bg-gray-700 text-white'
+                      !speakerEnabled
+                        ? 'bg-red-600 hover:bg-red-700 text-white'
+                        : 'bg-gray-600 hover:bg-gray-700 text-white'
                     }`}
                   >
                     {speakerEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
@@ -751,22 +730,6 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                       <option value="marin">Marin - High quality</option>
                     </select>
                   </div>
-
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">
-                      Temperature: {config.temperature} (0.6-1.2)
-                    </label>
-                    <input
-                      type="range"
-                      min="0.6"
-                      max="1.2"
-                      step="0.1"
-                      value={config.temperature}
-                      onChange={(e) => setConfig({ ...config, temperature: parseFloat(e.target.value) })}
-                      disabled={sessionActive}
-                      className="w-full"
-                    />
-                  </div>
                 </div>
               </div>
 
@@ -805,43 +768,17 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                           turnDetection: {
                             ...config.turnDetection,
                             type: vadMode === 'disabled' ? 'none' : vadMode,
-                          }
+                          },
                         });
                       }}
                       disabled={sessionActive}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
                     >
-                      <option value="semantic_vad">Semantic VAD (Recommended)</option>
+                      <option value="semantic">Semantic VAD (Recommended)</option>
                       <option value="server_vad">Server VAD</option>
                       <option value="disabled">Disabled</option>
                     </select>
                   </div>
-
-                  {config.vadMode === 'semantic_vad' && (
-                    <div>
-                      <label className="block text-sm text-gray-600 mb-1">Eagerness</label>
-                      <select
-                        value={config.turnDetection.semanticVad?.eagerness || 'medium'}
-                        onChange={(e) =>
-                          setConfig({
-                            ...config,
-                            turnDetection: {
-                              ...config.turnDetection,
-                              semanticVad: {
-                                eagerness: e.target.value as 'low' | 'medium' | 'high',
-                              },
-                            },
-                          })
-                        }
-                        disabled={sessionActive}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="low">Low - Wait longer</option>
-                        <option value="medium">Medium - Balanced</option>
-                        <option value="high">High - Quick to interrupt</option>
-                      </select>
-                    </div>
-                  )}
 
                   {config.vadMode === 'server_vad' && (
                     <div className="space-y-4">
@@ -852,17 +789,13 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                           min="0"
                           max="1"
                           step="0.1"
-                          value={config.turnDetection.serverVad?.threshold || 0.5}
+                          value={config.turnDetection.threshold || 0.5}
                           onChange={(e) =>
                             setConfig({
                               ...config,
                               turnDetection: {
                                 ...config.turnDetection,
-                                serverVad: {
-                                  threshold: parseFloat(e.target.value),
-                                  prefixPaddingMs: config.turnDetection.serverVad?.prefixPaddingMs || 300,
-                                  silenceDurationMs: config.turnDetection.serverVad?.silenceDurationMs || 500,
-                                },
+                                threshold: parseFloat(e.target.value),
                               },
                             })
                           }
@@ -877,17 +810,13 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                           min="0"
                           max="1000"
                           step="50"
-                          value={config.turnDetection.serverVad?.prefixPaddingMs || 300}
+                          value={config.turnDetection.prefixPaddingMs || 300}
                           onChange={(e) =>
                             setConfig({
                               ...config,
                               turnDetection: {
                                 ...config.turnDetection,
-                                serverVad: {
-                                  threshold: config.turnDetection.serverVad?.threshold || 0.5,
-                                  prefixPaddingMs: parseInt(e.target.value),
-                                  silenceDurationMs: config.turnDetection.serverVad?.silenceDurationMs || 500,
-                                },
+                                prefixPaddingMs: parseInt(e.target.value),
                               },
                             })
                           }
@@ -902,17 +831,13 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                           min="100"
                           max="2000"
                           step="100"
-                          value={config.turnDetection.serverVad?.silenceDurationMs || 500}
+                          value={config.turnDetection.silenceDurationMs || 500}
                           onChange={(e) =>
                             setConfig({
                               ...config,
                               turnDetection: {
                                 ...config.turnDetection,
-                                serverVad: {
-                                  threshold: config.turnDetection.serverVad?.threshold || 0.5,
-                                  prefixPaddingMs: config.turnDetection.serverVad?.prefixPaddingMs || 300,
-                                  silenceDurationMs: parseInt(e.target.value),
-                                },
+                                silenceDurationMs: parseInt(e.target.value),
                               },
                             })
                           }
@@ -1052,8 +977,8 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                               entry.role === 'user'
                                 ? 'bg-blue-600 text-white'
                                 : entry.role === 'system'
-                                ? 'bg-gray-600 text-white'
-                                : 'bg-white border border-gray-200'
+                                  ? 'bg-gray-600 text-white'
+                                  : 'bg-white border border-gray-200'
                             }`}
                           >
                             <div className="text-xs opacity-75 mb-1">
@@ -1101,13 +1026,15 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-3">
-                                <div className={`p-2 rounded-lg ${
-                                  recording.status === 'completed'
-                                    ? 'bg-green-100'
-                                    : recording.status === 'processing'
-                                    ? 'bg-yellow-100'
-                                    : 'bg-red-100'
-                                }`}>
+                                <div
+                                  className={`p-2 rounded-lg ${
+                                    recording.status === 'completed'
+                                      ? 'bg-green-100'
+                                      : recording.status === 'processing'
+                                        ? 'bg-yellow-100'
+                                        : 'bg-red-100'
+                                  }`}
+                                >
                                   {recording.status === 'completed' ? (
                                     <Disc className="w-4 h-4 text-green-600" />
                                   ) : recording.status === 'processing' ? (
@@ -1127,13 +1054,15 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                                       <Clock className="w-3 h-3" />
                                       {formatDuration(recording.duration)}
                                     </span>
-                                    <span className={`px-2 py-0.5 rounded-full text-xs ${
-                                      recording.status === 'completed'
-                                        ? 'bg-green-100 text-green-700'
-                                        : recording.status === 'processing'
-                                        ? 'bg-yellow-100 text-yellow-700'
-                                        : 'bg-red-100 text-red-700'
-                                    }`}>
+                                    <span
+                                      className={`px-2 py-0.5 rounded-full text-xs ${
+                                        recording.status === 'completed'
+                                          ? 'bg-green-100 text-green-700'
+                                          : recording.status === 'processing'
+                                            ? 'bg-yellow-100 text-yellow-700'
+                                            : 'bg-red-100 text-red-700'
+                                      }`}
+                                    >
                                       {recording.status}
                                     </span>
                                   </div>
@@ -1201,24 +1130,22 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                             log.type === 'error'
                               ? 'bg-red-50 border-red-200 text-red-700'
                               : log.type === 'client'
-                              ? 'bg-blue-50 border-blue-200 text-blue-700'
-                              : log.type === 'server'
-                              ? 'bg-green-50 border-green-200 text-green-700'
-                              : 'bg-gray-50 border-gray-200 text-gray-700'
+                                ? 'bg-blue-50 border-blue-200 text-blue-700'
+                                : log.type === 'server'
+                                  ? 'bg-green-50 border-green-200 text-green-700'
+                                  : 'bg-gray-50 border-gray-200 text-gray-700'
                           }`}
                         >
-                          <span className="text-gray-500">
-                            {log.timestamp.toLocaleTimeString()}
-                          </span>
+                          <span className="text-gray-500">{log.timestamp.toLocaleTimeString()}</span>
                           <span
                             className={`px-2 py-0.5 rounded text-xs font-semibold ${
                               log.type === 'error'
                                 ? 'bg-red-200'
                                 : log.type === 'client'
-                                ? 'bg-blue-200'
-                                : log.type === 'server'
-                                ? 'bg-green-200'
-                                : 'bg-gray-200'
+                                  ? 'bg-blue-200'
+                                  : log.type === 'server'
+                                    ? 'bg-green-200'
+                                    : 'bg-gray-200'
                             }`}
                           >
                             {log.type.toUpperCase()}
@@ -1274,10 +1201,6 @@ Your knowledge cutoff is 2023-10. You are helpful, witty, and friendly. Act like
                         <div className="flex justify-between py-2 border-b">
                           <span className="text-gray-600">Voice:</span>
                           <span className="font-medium">{config.voice}</span>
-                        </div>
-                        <div className="flex justify-between py-2 border-b">
-                          <span className="text-gray-600">Temperature:</span>
-                          <span className="font-medium">{config.temperature}</span>
                         </div>
                         <div className="flex justify-between py-2 border-b">
                           <span className="text-gray-600">VAD Mode:</span>

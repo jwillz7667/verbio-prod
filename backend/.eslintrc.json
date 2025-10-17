@@ -1,0 +1,94 @@
+{
+  "root": true,
+  "parser": "@typescript-eslint/parser",
+  "parserOptions": {
+    "ecmaVersion": 2020,
+    "sourceType": "module",
+    "project": "./tsconfig.backend.json",
+    "tsconfigRootDir": "."
+  },
+  "extends": [
+    "airbnb-base",
+    "airbnb-typescript/base",
+    "plugin:@typescript-eslint/recommended"
+  ],
+  "plugins": ["@typescript-eslint"],
+  "env": {
+    "node": true,
+    "es2020": true,
+    "jest": true
+  },
+  "rules": {
+    "@typescript-eslint/no-explicit-any": "off",
+    "@typescript-eslint/no-unsafe-member-access": "off",
+    "@typescript-eslint/no-unsafe-assignment": "off",
+    "@typescript-eslint/no-unsafe-call": "off",
+    "@typescript-eslint/no-unsafe-return": "off",
+    "@typescript-eslint/no-unsafe-argument": "off",
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_"
+      }
+    ],
+    "@typescript-eslint/ban-types": "off",
+    "@typescript-eslint/restrict-template-expressions": "off",
+    "@typescript-eslint/no-use-before-define": [
+      "error",
+      {
+        "functions": false,
+        "classes": false,
+        "variables": false
+      }
+    ],
+    "@typescript-eslint/no-empty-function": "off",
+    "@typescript-eslint/no-namespace": "off",
+    "@typescript-eslint/naming-convention": "off",
+    "@typescript-eslint/no-var-requires": "off",
+    "max-classes-per-file": "off",
+    "no-console": "off",
+    "import/extensions": [
+      "error",
+      "ignorePackages",
+      {
+        "ts": "never"
+      }
+    ],
+    "import/no-named-as-default": "off",
+    "import/prefer-default-export": "off",
+    "no-plusplus": "off",
+    "arrow-parens": "off",
+    "no-void": "off",
+    "no-restricted-syntax": "off",
+    "no-param-reassign": "off",
+    "class-methods-use-this": "off",
+    "default-case": "off",
+    "no-mixed-operators": "off",
+    "no-case-declarations": "off",
+    "no-nested-ternary": "off",
+    "no-constant-condition": "warn",
+    "radix": "off",
+    "implicit-arrow-linebreak": "off",
+    "consistent-return": "off",
+    "no-underscore-dangle": "off",
+    "global-require": "off",
+    "no-prototype-builtins": "off",
+    "no-script-url": "off",
+    "no-useless-escape": "off",
+    "no-await-in-loop": "off",
+    "no-unsafe-optional-chaining": "off",
+    "no-promise-executor-return": "off",
+    "operator-linebreak": "off",
+    "function-paren-newline": "off",
+    "@typescript-eslint/indent": "off",
+    "max-len": [
+      "error",
+      {
+        "code": 210
+      }
+    ],
+    "func-names": "off",
+    "object-curly-newline": "off"
+  }
+}

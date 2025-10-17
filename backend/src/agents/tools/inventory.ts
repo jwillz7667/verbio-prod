@@ -1,8 +1,8 @@
 import { tool } from '@openai/agents';
 import { z } from 'zod';
-import Logger from '../../utils/logger';
+// import Logger from '../../utils/logger';
 
-const logger = Logger;
+// const logger = Logger;
 
 export class InventoryTool {
   static checkInventory = tool({
@@ -11,10 +11,9 @@ export class InventoryTool {
     parameters: z.object({
       itemName: z.string(),
     }),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Implementation would go here
-      return { success: true, available: true, quantity: 10 };
-    },
+      ({ success: true, available: true, quantity: 10 }),
   });
 
   static updateInventory = tool({
@@ -25,10 +24,9 @@ export class InventoryTool {
       quantity: z.number(),
       operation: z.enum(['add', 'subtract', 'set']),
     }),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Implementation would go here
-      return { success: true, message: 'Inventory updated' };
-    },
+      ({ success: true, message: 'Inventory updated' }),
   });
 
   static reserveItem = tool({
@@ -37,11 +35,10 @@ export class InventoryTool {
     parameters: z.object({
       itemName: z.string(),
       quantity: z.number(),
-      duration: z.number().optional(),
+      duration: z.number().nullable(),
     }),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Implementation would go here
-      return { success: true, reservationId: 'RES123' };
-    },
+      ({ success: true, reservationId: 'RES123' }),
   });
 }

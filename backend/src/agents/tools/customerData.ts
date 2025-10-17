@@ -1,9 +1,9 @@
 import { tool } from '@openai/agents';
 import { z } from 'zod';
-import { supabaseAdmin } from '../../config/supabase';
-import Logger from '../../utils/logger';
+// import { supabaseAdmin } from '../../config/supabase';
+// import Logger from '../../utils/logger';
 
-const logger = Logger;
+// const logger = Logger;
 
 export class CustomerDataTool {
   static getCustomerProfile = tool({
@@ -12,10 +12,9 @@ export class CustomerDataTool {
     parameters: z.object({
       customerPhone: z.string().describe('Customer phone number'),
     }),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Implementation would go here
-      return { success: true, message: 'Customer profile retrieved' };
-    },
+      ({ success: true, message: 'Customer profile retrieved' }),
   });
 
   static getCustomerOrders = tool({
@@ -23,12 +22,11 @@ export class CustomerDataTool {
     description: 'Get customer order history',
     parameters: z.object({
       customerPhone: z.string().describe('Customer phone number'),
-      limit: z.number().optional().default(10),
+      limit: z.number().nullable().default(10),
     }),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Implementation would go here
-      return { success: true, orders: [] };
-    },
+      ({ success: true, orders: [] }),
   });
 
   static getCustomerAppointments = tool({
@@ -37,10 +35,9 @@ export class CustomerDataTool {
     parameters: z.object({
       customerPhone: z.string().describe('Customer phone number'),
     }),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Implementation would go here
-      return { success: true, appointments: [] };
-    },
+      ({ success: true, appointments: [] }),
   });
 
   static updateCustomerInfo = tool({
@@ -48,12 +45,11 @@ export class CustomerDataTool {
     description: 'Update customer information',
     parameters: z.object({
       customerPhone: z.string(),
-      name: z.string().optional(),
-      email: z.string().optional(),
+      name: z.string().nullable(),
+      email: z.string().nullable(),
     }),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Implementation would go here
-      return { success: true, message: 'Customer info updated' };
-    },
+      ({ success: true, message: 'Customer info updated' }),
   });
 }

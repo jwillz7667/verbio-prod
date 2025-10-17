@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { supabaseAdmin } from '../config/supabase';
 import { stripeService } from './stripeService';
 import { logger } from '../utils/logger';
-import { StreamEvent } from '../types/twilio';
+import { StreamEvent } from '../types';
 
 interface RealtimeConfig {
   instructions: string;
@@ -41,24 +41,39 @@ interface OrderItem {
   price: number;
 }
 
-
 export class RealtimeSession extends EventEmitter {
   private ws: WebSocket | null = null;
+
   private apiKey: string;
+
   private config: RealtimeConfig;
+
   private inputAudioOffset: number = 0;
+
   private transcriptText: string = '';
+
   private activeResponseId: string | null = null;
+
   private sessionId: string | null = null;
+
   private twilioStreamSid: string | null = null;
+
   private ffmpegPath: string;
+
   private conversationHistory: any[] = [];
+
   private retryCount: number = 0;
+
   private maxRetries: number = 3;
+
   private retryDelay: number = 1000;
+
   private isConnected: boolean = false;
+
   private healthCheckInterval: NodeJS.Timeout | null = null;
+
   private lastPingTime: number = 0;
+
   private connectionStartTime: number = 0;
 
   constructor(apiKey: string, config: RealtimeConfig) {
@@ -89,7 +104,7 @@ export class RealtimeSession extends EventEmitter {
 
       this.ws = new WebSocket(url, {
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${this.apiKey}`,
           'OpenAI-Beta': 'realtime=v1',
         },
       });
@@ -195,28 +210,40 @@ export class RealtimeSession extends EventEmitter {
 
   private getEagernessThreshold(): number {
     switch (this.config.vadEagerness) {
-      case 'low': return 0.7;
-      case 'high': return 0.3;
-      case 'auto': return 0.5;
-      default: return 0.5;
+      case 'low':
+        return 0.7;
+      case 'high':
+        return 0.3;
+      case 'auto':
+        return 0.5;
+      default:
+        return 0.5;
     }
   }
 
   private getEagernessPadding(): number {
     switch (this.config.vadEagerness) {
-      case 'low': return 500;
-      case 'high': return 100;
-      case 'auto': return 300;
-      default: return 300;
+      case 'low':
+        return 500;
+      case 'high':
+        return 100;
+      case 'auto':
+        return 300;
+      default:
+        return 300;
     }
   }
 
   private getEagernessSilence(): number {
     switch (this.config.vadEagerness) {
-      case 'low': return 800;
-      case 'high': return 300;
-      case 'auto': return 500;
-      default: return 500;
+      case 'low':
+        return 800;
+      case 'high':
+        return 300;
+      case 'auto':
+        return 500;
+      default:
+        return 500;
     }
   }
 
@@ -242,17 +269,21 @@ export class RealtimeSession extends EventEmitter {
             const mulawBuffer = Buffer.from(event.media.payload, 'base64');
             const pcmBuffer = await this.resampleAudio(mulawBuffer, 'mulaw_to_pcm');
 
-            this.ws.send(JSON.stringify({
-              type: 'input_audio_buffer.append',
-              audio: pcmBuffer.toString('base64'),
-            }));
+            this.ws.send(
+              JSON.stringify({
+                type: 'input_audio_buffer.append',
+                audio: pcmBuffer.toString('base64'),
+              })
+            );
 
             this.inputAudioOffset += 20;
 
             if (this.inputAudioOffset % 1000 === 0) {
-              this.ws.send(JSON.stringify({
-                type: 'input_audio_buffer.commit',
-              }));
+              this.ws.send(
+                JSON.stringify({
+                  type: 'input_audio_buffer.commit',
+                })
+              );
             }
           } catch (error) {
             logger.error('Failed to process Twilio media', { error });
@@ -267,9 +298,11 @@ export class RealtimeSession extends EventEmitter {
         });
 
         if (this.activeResponseId) {
-          this.ws.send(JSON.stringify({
-            type: 'response.cancel',
-          }));
+          this.ws.send(
+            JSON.stringify({
+              type: 'response.cancel',
+            })
+          );
         }
 
         await this.cleanup();
@@ -402,27 +435,31 @@ export class RealtimeSession extends EventEmitter {
       }
 
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({
-          type: 'conversation.item.create',
-          item: {
-            type: 'function_call_output',
-            call_id: Date.now().toString(),
-            output: JSON.stringify(result),
-          },
-        }));
+        this.ws.send(
+          JSON.stringify({
+            type: 'conversation.item.create',
+            item: {
+              type: 'function_call_output',
+              call_id: Date.now().toString(),
+              output: JSON.stringify(result),
+            },
+          })
+        );
       }
     } catch (error) {
       logger.error('Function execution failed', { name, error });
 
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        this.ws.send(JSON.stringify({
-          type: 'conversation.item.create',
-          item: {
-            type: 'function_call_output',
-            call_id: Date.now().toString(),
-            output: JSON.stringify({ error: 'Function execution failed' }),
-          },
-        }));
+        this.ws.send(
+          JSON.stringify({
+            type: 'conversation.item.create',
+            item: {
+              type: 'function_call_output',
+              call_id: Date.now().toString(),
+              output: JSON.stringify({ error: 'Function execution failed' }),
+            },
+          })
+        );
       }
     }
   }
@@ -595,7 +632,12 @@ export class RealtimeSession extends EventEmitter {
     }
   }
 
-  private async scheduleAppointment(args: { date: string; time: string; service: string; name?: string }): Promise<any> {
+  private async scheduleAppointment(args: {
+    date: string;
+    time: string;
+    service: string;
+    name?: string;
+  }): Promise<any> {
     try {
       const appointmentData = {
         business_id: this.config.businessId,
@@ -614,11 +656,7 @@ export class RealtimeSession extends EventEmitter {
         },
       };
 
-      const { data: appointment, error } = await supabaseAdmin
-        .from('orders')
-        .insert(appointmentData)
-        .select()
-        .single();
+      const { data: appointment, error } = await supabaseAdmin.from('orders').insert(appointmentData).select().single();
 
       if (error) {
         throw error;
@@ -644,21 +682,19 @@ export class RealtimeSession extends EventEmitter {
   private async cleanup(): Promise<void> {
     try {
       if (this.transcriptText.trim()) {
-        const { error } = await supabaseAdmin
-          .from('transcripts')
-          .insert({
-            business_id: this.config.businessId,
-            call_sid: this.twilioStreamSid || 'unknown',
-            full_text: this.transcriptText.trim(),
-            metadata: {
-              customer_phone: this.config.customerPhone,
-              agent_type: this.config.agentType,
-              session_id: this.sessionId,
-              conversation_items: this.conversationHistory.length,
-              voice_used: this.config.voice,
-              vad_mode: this.config.vadMode,
-            },
-          });
+        const { error } = await supabaseAdmin.from('transcripts').insert({
+          business_id: this.config.businessId,
+          call_sid: this.twilioStreamSid || 'unknown',
+          full_text: this.transcriptText.trim(),
+          metadata: {
+            customer_phone: this.config.customerPhone,
+            agent_type: this.config.agentType,
+            session_id: this.sessionId,
+            conversation_items: this.conversationHistory.length,
+            voice_used: this.config.voice,
+            vad_mode: this.config.vadMode,
+          },
+        });
 
         if (error) {
           logger.error('Failed to save transcript', { error });
@@ -796,9 +832,42 @@ export class RealtimeSession extends EventEmitter {
 
   private async resampleAudio(buffer: Buffer, mode: 'mulaw_to_pcm' | 'pcm_to_mulaw'): Promise<Buffer> {
     return new Promise((resolve, reject) => {
-      const args = mode === 'mulaw_to_pcm'
-        ? ['-f', 'mulaw', '-ar', '8000', '-ac', '1', '-i', 'pipe:0', '-f', 's16le', '-ar', '24000', '-ac', '1', 'pipe:1']
-        : ['-f', 's16le', '-ar', '24000', '-ac', '1', '-i', 'pipe:0', '-f', 'mulaw', '-ar', '8000', '-ac', '1', 'pipe:1'];
+      const args =
+        mode === 'mulaw_to_pcm'
+          ? [
+              '-f',
+              'mulaw',
+              '-ar',
+              '8000',
+              '-ac',
+              '1',
+              '-i',
+              'pipe:0',
+              '-f',
+              's16le',
+              '-ar',
+              '24000',
+              '-ac',
+              '1',
+              'pipe:1',
+            ]
+          : [
+              '-f',
+              's16le',
+              '-ar',
+              '24000',
+              '-ac',
+              '1',
+              '-i',
+              'pipe:0',
+              '-f',
+              'mulaw',
+              '-ar',
+              '8000',
+              '-ac',
+              '1',
+              'pipe:1',
+            ];
 
       const ffmpeg = spawn(this.ffmpegPath, args);
       const output: Buffer[] = [];
@@ -827,19 +896,21 @@ export class RealtimeSession extends EventEmitter {
 
   sendMessage(text: string): void {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
-        type: 'conversation.item.create',
-        item: {
-          type: 'message',
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text,
-            },
-          ],
-        },
-      }));
+      this.ws.send(
+        JSON.stringify({
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text,
+              },
+            ],
+          },
+        })
+      );
     }
   }
 
@@ -923,7 +994,7 @@ export class RealtimeSession extends EventEmitter {
     }
 
     this.retryCount++;
-    const delay = this.retryDelay * Math.pow(2, this.retryCount - 1); // Exponential backoff
+    const delay = this.retryDelay * 2 ** (this.retryCount - 1); // Exponential backoff
 
     logger.info(`Attempting reconnection ${this.retryCount}/${this.maxRetries} in ${delay}ms`, {
       businessId: this.config.businessId,

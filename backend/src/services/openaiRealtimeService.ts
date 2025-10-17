@@ -6,7 +6,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import Logger from '../utils/logger';
-const logger = Logger;
 import {
   RealtimeServerEvent,
   RealtimeClientEvent,
@@ -44,12 +43,13 @@ import {
   Response,
 } from '../types/openaiRealtimeEvents';
 
+const logger = Logger;
+
 const execAsync = promisify(exec);
 
 interface OpenAIRealtimeConfig {
   voice: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer' | 'cedar' | 'marin';
   systemPrompt?: string;
-  temperature?: number;
   tools?: Tool[];
   onTranscription?: (role: string, content: string) => void;
   onError?: (error: string) => void;
@@ -115,7 +115,7 @@ export class OpenAIRealtimeService extends EventEmitter {
 
   async connect(model: string = 'gpt-realtime'): Promise<void> {
     try {
-      const apiKey = process.env['OPENAI_API_KEY'];
+      const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
         throw new Error('OpenAI API key not configured');
       }
@@ -129,7 +129,7 @@ export class OpenAIRealtimeService extends EventEmitter {
         },
       });
 
-      return new Promise<void>((resolve, reject) => {
+      return await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
           this.ws?.close();
           reject(new Error('Connection timeout after 30 seconds'));
@@ -218,7 +218,6 @@ export class OpenAIRealtimeService extends EventEmitter {
           threshold: 0.5,
           prefix_padding_ms: 300,
           silence_duration_ms: 500,
-          create_response: true,
         },
         tools: this.config.tools || [],
         tool_choice: this.config.tools?.length ? 'auto' : 'none',
@@ -279,10 +278,12 @@ export class OpenAIRealtimeService extends EventEmitter {
           object: 'conversation.item',
           type: 'message',
           role: 'user',
-          content: [{
-            type: 'input_text',
-            text,
-          }],
+          content: [
+            {
+              type: 'input_text',
+              text,
+            },
+          ],
         },
       };
 
@@ -308,9 +309,8 @@ export class OpenAIRealtimeService extends EventEmitter {
     try {
       fs.writeFileSync(inputPath, mulawBuffer);
 
-      await execAsync(
-        `ffmpeg -f mulaw -ar 8000 -i ${inputPath} -f s16le -ar 16000 ${outputPath} -y -loglevel error`,
-      );
+      // OpenAI Realtime API expects 24kHz PCM16 audio
+      await execAsync(`ffmpeg -f mulaw -ar 8000 -i ${inputPath} -f s16le -ar 24000 ${outputPath} -y -loglevel error`);
 
       const pcm16Buffer = fs.readFileSync(outputPath);
 
@@ -332,9 +332,8 @@ export class OpenAIRealtimeService extends EventEmitter {
     try {
       fs.writeFileSync(inputPath, pcm16Buffer);
 
-      await execAsync(
-        `ffmpeg -f s16le -ar 16000 -i ${inputPath} -f mulaw -ar 8000 ${outputPath} -y -loglevel error`,
-      );
+      // Convert from 24kHz PCM16 (OpenAI format) to 8kHz μ-law (Twilio format)
+      await execAsync(`ffmpeg -f s16le -ar 24000 -i ${inputPath} -f mulaw -ar 8000 ${outputPath} -y -loglevel error`);
 
       const mulawBuffer = fs.readFileSync(outputPath);
 
@@ -359,15 +358,15 @@ export class OpenAIRealtimeService extends EventEmitter {
 
       switch (event.type) {
         case 'error':
-          this.handleError(event as ErrorEvent);
+          this.handleError(event);
           break;
 
         case 'session.created':
-          this.handleSessionCreated(event as SessionCreatedEvent);
+          this.handleSessionCreated(event);
           break;
 
         case 'session.updated':
-          this.handleSessionUpdated(event as SessionUpdatedEvent);
+          this.handleSessionUpdated(event);
           break;
 
         case 'conversation.created':
@@ -375,99 +374,99 @@ export class OpenAIRealtimeService extends EventEmitter {
           break;
 
         case 'conversation.item.created':
-          this.handleConversationItemCreated(event as ConversationItemCreatedEvent);
+          this.handleConversationItemCreated(event);
           break;
 
         case 'conversation.item.input_audio_transcription.completed':
-          this.handleInputAudioTranscriptionCompleted(event as ConversationItemInputAudioTranscriptionCompletedEvent);
+          this.handleInputAudioTranscriptionCompleted(event);
           break;
 
         case 'conversation.item.input_audio_transcription.failed':
-          this.handleInputAudioTranscriptionFailed(event as ConversationItemInputAudioTranscriptionFailedEvent);
+          this.handleInputAudioTranscriptionFailed(event);
           break;
 
         case 'conversation.item.truncated':
-          this.handleConversationItemTruncated(event as ConversationItemTruncatedEvent);
+          this.handleConversationItemTruncated(event);
           break;
 
         case 'conversation.item.deleted':
-          this.handleConversationItemDeleted(event as ConversationItemDeletedEvent);
+          this.handleConversationItemDeleted(event);
           break;
 
         case 'input_audio_buffer.committed':
-          this.handleInputAudioBufferCommitted(event as InputAudioBufferCommittedEvent);
+          this.handleInputAudioBufferCommitted(event);
           break;
 
         case 'input_audio_buffer.cleared':
-          this.handleInputAudioBufferCleared(event as InputAudioBufferClearedEvent);
+          this.handleInputAudioBufferCleared(event);
           break;
 
         case 'input_audio_buffer.speech_started':
-          this.handleSpeechStarted(event as InputAudioBufferSpeechStartedEvent);
+          this.handleSpeechStarted(event);
           break;
 
         case 'input_audio_buffer.speech_stopped':
-          this.handleSpeechStopped(event as InputAudioBufferSpeechStoppedEvent);
+          this.handleSpeechStopped(event);
           break;
 
         case 'response.created':
-          this.handleResponseCreated(event as ResponseCreatedEvent);
+          this.handleResponseCreated(event);
           break;
 
         case 'response.done':
-          this.handleResponseDone(event as ResponseDoneEvent);
+          this.handleResponseDone(event);
           break;
 
         case 'response.output_item.added':
-          this.handleResponseOutputItemAdded(event as ResponseOutputItemAddedEvent);
+          this.handleResponseOutputItemAdded(event);
           break;
 
         case 'response.output_item.done':
-          this.handleResponseOutputItemDone(event as ResponseOutputItemDoneEvent);
+          this.handleResponseOutputItemDone(event);
           break;
 
         case 'response.content_part.added':
-          this.handleResponseContentPartAdded(event as ResponseContentPartAddedEvent);
+          this.handleResponseContentPartAdded(event);
           break;
 
         case 'response.content_part.done':
-          this.handleResponseContentPartDone(event as ResponseContentPartDoneEvent);
+          this.handleResponseContentPartDone(event);
           break;
 
         case 'response.text.delta':
-          this.handleTextDelta(event as ResponseTextDeltaEvent);
+          this.handleTextDelta(event);
           break;
 
         case 'response.text.done':
-          this.handleTextDone(event as ResponseTextDoneEvent);
+          this.handleTextDone(event);
           break;
 
         case 'response.audio.delta':
-          this.handleAudioDelta(event as ResponseAudioDeltaEvent);
+          this.handleAudioDelta(event);
           break;
 
         case 'response.audio.done':
-          this.handleAudioDone(event as ResponseAudioDoneEvent);
+          this.handleAudioDone(event);
           break;
 
         case 'response.audio_transcript.delta':
-          this.handleAudioTranscriptDelta(event as ResponseAudioTranscriptDeltaEvent);
+          this.handleAudioTranscriptDelta(event);
           break;
 
         case 'response.audio_transcript.done':
-          this.handleAudioTranscriptDone(event as ResponseAudioTranscriptDoneEvent);
+          this.handleAudioTranscriptDone(event);
           break;
 
         case 'response.function_call_arguments.delta':
-          this.handleFunctionCallArgumentsDelta(event as ResponseFunctionCallArgumentsDeltaEvent);
+          this.handleFunctionCallArgumentsDelta(event);
           break;
 
         case 'response.function_call_arguments.done':
-          this.handleFunctionCallArgumentsDone(event as ResponseFunctionCallArgumentsDoneEvent);
+          this.handleFunctionCallArgumentsDone(event);
           break;
 
         case 'rate_limits.updated':
-          this.handleRateLimitsUpdated(event as RateLimitsUpdatedEvent);
+          this.handleRateLimitsUpdated(event);
           break;
 
         default:
@@ -561,7 +560,9 @@ export class OpenAIRealtimeService extends EventEmitter {
     logger.debug(`Response completed: ${event.response.id}`);
 
     if (event.response.usage) {
-      logger.info(`Token usage - Total: ${event.response.usage.total_tokens}, Input: ${event.response.usage.input_tokens}, Output: ${event.response.usage.output_tokens}`);
+      logger.info(
+        `Token usage - Total: ${event.response.usage.total_tokens}, Input: ${event.response.usage.input_tokens}, Output: ${event.response.usage.output_tokens}`
+      );
     }
 
     this.config.onResponseComplete?.(event.response);

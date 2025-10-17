@@ -5,26 +5,48 @@ import Logger from '../../utils/logger';
 
 const logger = Logger;
 
+interface BusinessData {
+  phone?: string;
+  email?: string;
+  website?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  return_policy?: string;
+  cancellation_policy?: string;
+  hours?: Record<string, { open?: string; close?: string; closed?: boolean }>;
+  menu?: Array<{ name: string; category?: string; price?: number; description?: string }>;
+  services?: Array<{ name: string; type?: string; price?: number }>;
+  [key: string]: unknown;
+}
+
+interface BusinessResponse {
+  name: string;
+  data_json: BusinessData;
+}
+
 export class BusinessInfoTool {
   static getBusinessInfo = tool({
     name: 'get_business_info',
     description: 'Get general information about the business',
     parameters: z.object({
-      infoType: z.enum(['general', 'contact', 'location', 'policies']).optional(),
+      infoType: z.enum(['general', 'contact', 'location', 'policies']).nullable().optional(),
     }),
-    execute: async (input, context: any) => {
+    execute: async (input: { infoType?: string | null }, context: any): Promise<Record<string, unknown>> => {
       try {
+        const businessId = context.businessId || context.metadata?.businessId;
         const { data: business, error } = await supabaseAdmin
           .from('businesses')
           .select('name, data_json')
-          .eq('id', context.businessId)
+          .eq('id', businessId)
           .single();
 
         if (error) throw error;
 
-        const businessData = business.data_json || {};
-        const info: any = {
-          name: business.name,
+        const businessData = (business as BusinessResponse | null)?.data_json || {};
+        const info: Record<string, unknown> = {
+          name: (business as BusinessResponse | null)?.name,
         };
 
         switch (input.infoType) {
@@ -65,19 +87,24 @@ export class BusinessInfoTool {
     name: 'get_business_hours',
     description: 'Get business operating hours',
     parameters: z.object({
-      day: z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']).optional(),
+      day: z.enum(['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']).nullable().optional(),
     }),
-    execute: async (input, context: any) => {
+    execute: async (input: { day?: string | null }, context: any): Promise<Record<string, unknown>> => {
       try {
+        const businessId = context.businessId || context.metadata?.businessId;
         const { data: business, error } = await supabaseAdmin
           .from('businesses')
           .select('data_json')
-          .eq('id', context.businessId)
+          .eq('id', businessId)
           .single();
 
         if (error) throw error;
 
-        const hours = business.data_json?.hours || {};
+        const hours =
+          ((business as BusinessResponse | null)?.data_json?.hours as Record<
+            string,
+            { open?: string; close?: string; closed?: boolean }
+          >) || {};
 
         if (input.day) {
           const dayHours = hours[input.day];
@@ -117,32 +144,40 @@ export class BusinessInfoTool {
     name: 'get_menu',
     description: 'Get restaurant menu or service list',
     parameters: z.object({
-      category: z.string().optional().describe('Menu category'),
-      itemName: z.string().optional().describe('Search for specific item'),
+      category: z.string().nullable().optional().describe('Menu category'),
+      itemName: z.string().nullable().optional().describe('Search for specific item'),
     }),
-    execute: async (input, context: any) => {
+    execute: async (
+      input: { category?: string | null; itemName?: string | null },
+      context: any
+    ): Promise<Record<string, unknown>> => {
       try {
+        const businessId = context.businessId || context.metadata?.businessId;
         const { data: business, error } = await supabaseAdmin
           .from('businesses')
           .select('data_json')
-          .eq('id', context.businessId)
+          .eq('id', businessId)
           .single();
 
         if (error) throw error;
 
-        const menu = business.data_json?.menu || [];
+        const menu =
+          ((business as BusinessResponse | null)?.data_json?.menu as Array<{
+            name: string;
+            category?: string;
+          }>) || [];
 
         let filteredMenu = menu;
 
         if (input.category) {
-          filteredMenu = menu.filter((item: any) => 
-            item.category?.toLowerCase() === input.category?.toLowerCase()
+          filteredMenu = menu.filter((item) =>
+            (item.category?.toLowerCase() ?? '').includes((input.category ?? '').toLowerCase())
           );
         }
 
         if (input.itemName) {
-          filteredMenu = filteredMenu.filter((item: any) =>
-            item.name?.toLowerCase().includes(input.itemName?.toLowerCase())
+          filteredMenu = filteredMenu.filter((item) =>
+            (item.name?.toLowerCase() ?? '').includes((input.itemName ?? '').toLowerCase())
           );
         }
 
@@ -150,9 +185,8 @@ export class BusinessInfoTool {
           success: true,
           menu: filteredMenu,
           totalItems: filteredMenu.length,
-          message: filteredMenu.length > 0 
-            ? `Found ${filteredMenu.length} items` 
-            : 'No items found matching your criteria',
+          message:
+            filteredMenu.length > 0 ? `Found ${filteredMenu.length} items` : 'No items found matching your criteria',
         };
       } catch (error) {
         logger.error('Failed to get menu', { error });
@@ -168,25 +202,29 @@ export class BusinessInfoTool {
     name: 'get_services',
     description: 'Get list of services offered by the business',
     parameters: z.object({
-      serviceType: z.string().optional().describe('Type of service'),
+      serviceType: z.string().nullable().optional().describe('Type of service'),
     }),
-    execute: async (input, context: any) => {
+    execute: async (input: { serviceType?: string | null }, context: any): Promise<Record<string, unknown>> => {
       try {
+        const businessId = context.businessId || context.metadata?.businessId;
         const { data: business, error } = await supabaseAdmin
           .from('businesses')
           .select('data_json')
-          .eq('id', context.businessId)
+          .eq('id', businessId)
           .single();
 
         if (error) throw error;
 
-        const services = business.data_json?.services || [];
+        const services =
+          ((business as BusinessResponse | null)?.data_json?.services as Array<{
+            type?: string;
+          }>) || [];
 
         let filteredServices = services;
 
         if (input.serviceType) {
-          filteredServices = services.filter((service: any) => 
-            service.type?.toLowerCase() === input.serviceType?.toLowerCase()
+          filteredServices = services.filter(
+            (service) => (service.type?.toLowerCase() ?? '') === (input.serviceType ?? '').toLowerCase()
           );
         }
 

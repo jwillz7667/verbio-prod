@@ -13,43 +13,35 @@ if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
  * Public Supabase client for auth operations
  * Uses anon key with RLS policies enforced
  */
-export const supabasePublic: SupabaseClient = createClient(
-  supabaseUrl,
-  supabaseAnonKey,
-  {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: false,
-      detectSessionInUrl: false,
+export const supabasePublic: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: true,
+    persistSession: false,
+    detectSessionInUrl: false,
+  },
+  global: {
+    headers: {
+      'x-application-name': 'verbio-backend',
     },
-    global: {
-      headers: {
-        'x-application-name': 'verbio-backend',
-      },
-    },
-  }
-);
+  },
+});
 
 /**
  * Admin Supabase client for server-side operations
  * Uses service key to bypass RLS policies
  */
-export const supabaseAdmin: SupabaseClient = createClient(
-  supabaseUrl,
-  supabaseServiceKey,
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-      detectSessionInUrl: false,
+export const supabaseAdmin: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false,
+  },
+  global: {
+    headers: {
+      'x-application-name': 'verbio-backend-admin',
     },
-    global: {
-      headers: {
-        'x-application-name': 'verbio-backend-admin',
-      },
-    },
-  }
-);
+  },
+});
 
 /**
  * Get a Supabase client with user's JWT token

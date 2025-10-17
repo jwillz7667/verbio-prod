@@ -1,73 +1,64 @@
-import TwilioVoiceResponse = require('twilio/lib/twiml/VoiceResponse');
+/**
+ * Twilio-specific type definitions
+ */
 
 export interface TwilioWebhookRequest {
   CallSid: string;
-  CallStatus: string;
+  AccountSid: string;
   From: string;
   To: string;
-  Direction: string;
-  AccountSid?: string;
-  ApiVersion?: string;
-  CalledVia?: string;
+  CallStatus: 'queued' | 'ringing' | 'in-progress' | 'completed' | 'busy' | 'failed' | 'no-answer' | 'canceled';
+  ApiVersion: string;
+  Direction: 'inbound' | 'outbound-api' | 'outbound-dial';
+  ForwardedFrom?: string;
   CallerName?: string;
-  Digits?: string;
+  ParentCallSid?: string;
+  CallDuration?: string;
+  SipResponseCode?: string;
+  RecordingUrl?: string;
+  RecordingSid?: string;
+  RecordingDuration?: string;
+  Timestamp?: string;
+}
+
+export interface TwilioStatusCallbackRequest {
+  CallSid: string;
+  AccountSid: string;
+  From: string;
+  To: string;
+  CallStatus: 'queued' | 'ringing' | 'in-progress' | 'completed' | 'busy' | 'failed' | 'no-answer' | 'canceled';
+  ApiVersion: string;
+  Direction: 'inbound' | 'outbound-api' | 'outbound-dial';
+  CallDuration?: string;
   Duration?: string;
   RecordingUrl?: string;
   RecordingSid?: string;
   RecordingDuration?: string;
-}
-
-export interface TwilioStatusCallbackRequest extends TwilioWebhookRequest {
   Timestamp?: string;
-  CallbackSource?: string;
   SequenceNumber?: string;
 }
 
-export interface StreamEvent {
-  event: 'start' | 'media' | 'stop';
-  sequenceNumber: string;
-  streamSid?: string;
-  start?: {
-    streamSid: string;
-    accountSid: string;
-    callSid: string;
-    customParameters?: Record<string, any>;
-  };
-  media?: {
-    track: 'inbound' | 'outbound';
-    chunk: string;
-    timestamp: string;
-    payload: string;
-  };
-  stop?: {
-    accountSid: string;
-    callSid: string;
-  };
+export interface TwilioErrorResponse {
+  code: number;
+  message: string;
+  moreInfo: string;
+  status: number;
 }
 
-export interface TwilioConfig {
+export interface TwilioCallInstance {
+  sid: string;
   accountSid: string;
-  authToken: string;
-  apiKey?: string;
-  apiSecret?: string;
-}
-
-export interface PhoneMappingConfig {
-  twilioNumber: string;
-  agentId: string;
-  businessId: string;
-  agentType: 'service' | 'order' | 'payment';
-  prompt?: string;
-  voiceConfig?: {
-    voice: string;
-    language?: string;
-    pitch?: number;
-    rate?: number;
-  };
-}
-
-export class VoiceResponse extends TwilioVoiceResponse {
-  constructor() {
-    super();
-  }
+  from: string;
+  to: string;
+  status: string;
+  startTime: Date | null;
+  endTime: Date | null;
+  duration: string | null;
+  price: string | null;
+  direction: string;
+  answeredBy: string | null;
+  forwardedFrom: string | null;
+  callerName: string | null;
+  uri: string;
+  subresourceUris: Record<string, string>;
 }

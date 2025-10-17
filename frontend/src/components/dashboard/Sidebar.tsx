@@ -1,12 +1,11 @@
-import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import React, { useEffect } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import clsx from 'clsx';
 import {
   LayoutDashboard,
   Phone,
   CreditCard,
-  Bot,
   ShoppingCart,
   Building2,
   BarChart3,
@@ -15,9 +14,11 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
+  X,
   Activity,
   Users,
   FileText,
+  Wrench,
 } from 'lucide-react';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
@@ -25,11 +26,22 @@ import toast from 'react-hot-toast';
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  isMobile?: boolean;
+  isOpen?: boolean;
+  onClose?: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
+const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle, isMobile = false, isOpen = true, onClose }) => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Auto-close mobile sidebar on navigation
+  useEffect(() => {
+    if (isMobile && onClose) {
+      onClose();
+    }
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     try {
@@ -44,7 +56,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
   const navigation = [
     { name: 'Overview', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Voice Agents', href: '/dashboard/voice-agents', icon: Phone },
-    { name: 'AI Agents', href: '/dashboard/agents', icon: Bot },
+    { name: 'Agent Builder', href: '/dashboard/agent-builder', icon: Wrench },
     { name: 'Orders', href: '/dashboard/orders', icon: ShoppingCart },
     { name: 'Analytics', href: '/dashboard/analytics', icon: BarChart3 },
     { name: 'Activities', href: '/dashboard/activities', icon: Activity },
@@ -59,16 +71,11 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
     { name: 'Help & Support', href: '/dashboard/help', icon: HelpCircle },
   ];
 
-  return (
-    <motion.aside
-      initial={false}
-      animate={{ width: collapsed ? 80 : 260 }}
-      transition={{ duration: 0.3, ease: 'easeInOut' }}
-      className="fixed left-0 top-0 z-40 h-screen bg-white border-r border-gray-200 shadow-sm flex flex-col"
-    >
+  const renderSidebarContent = () => (
+    <>
       {/* Logo Section */}
       <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
-        {!collapsed && (
+        {(isMobile || !collapsed) && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -81,8 +88,13 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
             <span className="text-xl font-bold text-gray-900">Verbio</span>
           </motion.div>
         )}
-        <button onClick={onToggle} className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
-          {collapsed ? (
+        <button
+          onClick={isMobile ? onClose : onToggle}
+          className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+        >
+          {isMobile ? (
+            <X className="w-5 h-5 text-gray-600" />
+          ) : collapsed ? (
             <ChevronRight className="w-5 h-5 text-gray-600" />
           ) : (
             <ChevronLeft className="w-5 h-5 text-gray-600" />
@@ -103,14 +115,14 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
                 {
                   'bg-primary-50 text-primary-700 border-l-4 border-primary-500 font-medium': isActive,
                   'text-gray-700': !isActive,
-                  'justify-center': collapsed,
+                  'justify-center': !isMobile && collapsed,
                 }
               )
             }
-            title={collapsed ? item.name : undefined}
+            title={!isMobile && collapsed ? item.name : undefined}
           >
             <item.icon className="w-5 h-5 flex-shrink-0" />
-            {!collapsed && (
+            {(isMobile || !collapsed) && (
               <motion.span
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -137,14 +149,14 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
                 {
                   'bg-gray-100 text-gray-900 font-medium': isActive,
                   'text-gray-600': !isActive,
-                  'justify-center': collapsed,
+                  'justify-center': !isMobile && collapsed,
                 }
               )
             }
-            title={collapsed ? item.name : undefined}
+            title={!isMobile && collapsed ? item.name : undefined}
           >
             <item.icon className="w-5 h-5 flex-shrink-0" />
-            {!collapsed && (
+            {(isMobile || !collapsed) && (
               <motion.span
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -163,13 +175,13 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
             'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200',
             'text-gray-600 hover:bg-red-50 hover:text-red-600',
             {
-              'justify-center': collapsed,
+              'justify-center': !isMobile && collapsed,
             }
           )}
-          title={collapsed ? 'Logout' : undefined}
+          title={!isMobile && collapsed ? 'Logout' : undefined}
         >
           <LogOut className="w-5 h-5 flex-shrink-0" />
-          {!collapsed && (
+          {(isMobile || !collapsed) && (
             <motion.span
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -186,13 +198,13 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       <div className="px-3 py-4 border-t border-gray-200">
         <div
           className={clsx('flex items-center gap-3 p-2 rounded-lg bg-gray-50', {
-            'justify-center': collapsed,
+            'justify-center': !isMobile && collapsed,
           })}
         >
           <div className="w-8 h-8 rounded-full bg-gradient-to-r from-primary-500 to-primary-600 flex items-center justify-center flex-shrink-0">
             <span className="text-white text-sm font-bold">{user?.email?.charAt(0).toUpperCase() || 'U'}</span>
           </div>
-          {!collapsed && (
+          {(isMobile || !collapsed) && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -205,6 +217,49 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           )}
         </div>
       </div>
+    </>
+  );
+
+  // Mobile sidebar with overlay
+  if (isMobile) {
+    return (
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            {/* Mobile Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.5 }}
+              exit={{ opacity: 0 }}
+              onClick={onClose}
+              className="fixed inset-0 bg-black z-40 lg:hidden"
+            />
+
+            {/* Mobile Sidebar */}
+            <motion.aside
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="fixed left-0 top-0 z-50 w-72 h-screen bg-white shadow-xl flex flex-col lg:hidden"
+            >
+              {renderSidebarContent()}
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
+    );
+  }
+
+  // Desktop sidebar
+  return (
+    <motion.aside
+      initial={false}
+      animate={{ width: collapsed ? 80 : 260 }}
+      transition={{ duration: 0.3, ease: 'easeInOut' }}
+      className="hidden lg:flex fixed left-0 top-0 z-40 h-screen bg-white border-r border-gray-200 shadow-sm flex-col"
+    >
+      {renderSidebarContent()}
     </motion.aside>
   );
 };

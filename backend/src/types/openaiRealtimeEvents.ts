@@ -35,12 +35,12 @@ export interface SessionUpdateEvent extends ClientEvent {
       model?: 'whisper-1';
     };
     turn_detection?: {
-      type?: 'none' | 'server_vad';
+      type?: 'none' | 'server_vad' | 'semantic_vad';
       threshold?: number;
       prefix_padding_ms?: number;
       silence_duration_ms?: number;
       create_response?: boolean;
-    };
+    } | null;
     tools?: Tool[];
     tool_choice?: 'auto' | 'none' | 'required' | { type: 'function'; function: { name: string } };
     max_response_output_tokens?: number | 'inf';
@@ -354,12 +354,12 @@ export interface Session {
     model: 'whisper-1';
   };
   turn_detection?: {
-    type: 'none' | 'server_vad';
-    threshold: number;
-    prefix_padding_ms: number;
-    silence_duration_ms: number;
-    create_response: boolean;
-  };
+    type: 'none' | 'server_vad' | 'semantic_vad';
+    threshold?: number;
+    prefix_padding_ms?: number;
+    silence_duration_ms?: number;
+    create_response?: boolean;
+  } | null;
   tools: Tool[];
   tool_choice: 'auto' | 'none' | 'required' | { type: 'function'; function: { name: string } };
   max_response_output_tokens?: number | 'inf';
@@ -445,22 +445,26 @@ export interface RateLimit {
 
 export function isClientEvent(event: unknown): event is ClientEvent {
   const e = event as Record<string, unknown>;
-  return e && typeof e['type'] === 'string' && [
-    'session.update',
-    'input_audio_buffer.append',
-    'input_audio_buffer.commit',
-    'input_audio_buffer.clear',
-    'conversation.item.create',
-    'conversation.item.truncate',
-    'conversation.item.delete',
-    'response.create',
-    'response.cancel',
-  ].includes(e['type'] as string);
+  return (
+    e &&
+    typeof e.type === 'string' &&
+    [
+      'session.update',
+      'input_audio_buffer.append',
+      'input_audio_buffer.commit',
+      'input_audio_buffer.clear',
+      'conversation.item.create',
+      'conversation.item.truncate',
+      'conversation.item.delete',
+      'response.create',
+      'response.cancel',
+    ].includes(e.type)
+  );
 }
 
 export function isServerEvent(event: unknown): event is ServerEvent {
   const e = event as Record<string, unknown>;
-  return e && typeof e['type'] === 'string' && typeof e['event_id'] === 'string';
+  return e && typeof e.type === 'string' && typeof e.event_id === 'string';
 }
 
 export function isErrorEvent(event: ServerEvent): event is ErrorEvent {

@@ -23,7 +23,8 @@ npm test                       # Run all tests (backend + frontend)
 npm run test:backend           # Backend Jest tests only
 npm run test:backend -- --coverage  # Backend tests with coverage report
 npm run test:backend -- --watch    # Backend tests in watch mode
-npx jest --testPathPattern=stripe  # Run specific test file pattern
+cd backend && npx jest --testPathPattern=stripe  # Run specific test file pattern
+cd backend && npm test         # Run from backend directory with Jest config
 
 # Building
 npm run build                  # Build both backend and frontend
@@ -60,6 +61,14 @@ The core real-time communication happens in `/backend/src/socket/realtimeHandler
 2. Handler converts audio to PCM16 using FFmpeg
 3. Audio streams to OpenAI Realtime session
 4. OpenAI responses are converted back to μ-law and sent to Twilio
+
+### OpenAI Agents SDK Integration
+`/backend/src/services/openaiAgentService.ts` implements multi-agent system:
+- Uses `@openai/agents` SDK for structured agent workflows
+- Agents have access to business-specific tools (inventory, orders, customer data, etc.)
+- Agent configurations stored in database per business
+- Tools are dynamically registered based on business needs
+- Supports function calling for complex operations
 
 ### OpenAI Realtime API GA Parameters
 `/backend/src/services/openaiRealtimeService.ts` manages the OpenAI WebSocket connection:
@@ -189,3 +198,48 @@ When deploying, watch for:
 - Optional parameters - Use type guards or default values
 - Recording API parameters - `callSid` is not a direct filter parameter
 - OpenAI session types - Temperature is not a valid session parameter
+
+## Project Structure
+
+```
+verbio-app/
+├── backend/              # Express + WebSocket server
+│   ├── src/
+│   │   ├── agents/      # OpenAI agent tools and configurations
+│   │   ├── middleware/  # Auth, security, validation middleware
+│   │   ├── routes/      # REST API endpoints
+│   │   ├── services/    # Business logic (OpenAI, Twilio, Stripe, tokens)
+│   │   ├── socket/      # WebSocket handlers (Twilio→OpenAI bridge)
+│   │   └── index.ts     # Server entry point
+│   ├── tests/           # Jest test suites
+│   └── Dockerfile       # Container configuration for Cloud Run
+├── frontend/            # React + Vite dashboard
+│   ├── src/
+│   │   ├── components/  # Reusable UI components
+│   │   ├── pages/       # Route pages (Dashboard, Billing, etc.)
+│   │   ├── services/    # API client, Supabase client
+│   │   └── store/       # Zustand state management
+│   └── dist/            # Build output
+├── supabase/
+│   └── migrations/      # SQL migration files
+└── tests/
+    ├── frontend/        # Frontend integration tests
+    └── e2e/             # End-to-end tests
+```
+
+## Key Dependencies
+
+Backend:
+- `@openai/agents` - OpenAI Agents SDK for multi-agent workflows
+- `openai` - OpenAI Realtime API client
+- `twilio` - Phone call and media streaming
+- `stripe` - Payment processing
+- `ws` - WebSocket server
+- `ffmpeg-static` - Audio conversion (μ-law ↔ PCM16)
+
+Frontend:
+- `react` + `react-router-dom` - UI framework and routing
+- `zustand` - State management
+- `@tanstack/react-query` - Server state caching
+- `@supabase/supabase-js` - Database client with realtime subscriptions
+- `axios` - HTTP client

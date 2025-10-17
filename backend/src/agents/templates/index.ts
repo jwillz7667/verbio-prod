@@ -1,5 +1,4 @@
-import { Agent } from '@openai/agents';
-import { getToolsForAgentType, AGENT_TOOLS } from '../tools';
+// Agent template definitions and utilities for OpenAI agents
 
 export interface AgentTemplate {
   name: string;
@@ -86,7 +85,14 @@ export const SCHEDULING_AGENT_TEMPLATE: AgentTemplate = {
 - Collect necessary information for appointments
 - Send confirmation details to customers`,
   model: 'gpt-4o',
-  tools: ['checkAvailability', 'scheduleAppointment', 'rescheduleAppointment', 'cancelAppointment', 'getBusinessHours', 'sendSMS'],
+  tools: [
+    'checkAvailability',
+    'scheduleAppointment',
+    'rescheduleAppointment',
+    'cancelAppointment',
+    'getBusinessHours',
+    'sendSMS',
+  ],
   temperature: 0.5,
   maxIterations: 12,
 };

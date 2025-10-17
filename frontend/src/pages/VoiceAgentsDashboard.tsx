@@ -1,12 +1,16 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Phone, Bot, Settings, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
+import { Phone, PhoneCall, Bot, Settings, TrendingUp, AlertCircle, CheckCircle } from 'lucide-react';
 import { VoiceAgentsPlayground } from './VoiceAgentsPlayground';
 import { useQuery } from '@tanstack/react-query';
 import api from '../services/api';
+import toast from 'react-hot-toast';
 
 const VoiceAgentsDashboard: React.FC = () => {
   const [showPlayground, setShowPlayground] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [isCallActive, setIsCallActive] = useState(false);
+  const [callStatus, setCallStatus] = useState('');
 
   // Fetch agent metrics
   const { data: agentMetrics } = useQuery({
@@ -42,6 +46,42 @@ const VoiceAgentsDashboard: React.FC = () => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}m ${secs}s`;
+  };
+
+  const handleMakeCall = async () => {
+    if (!phoneNumber) {
+      toast.error('Please enter a phone number');
+      return;
+    }
+
+    setIsCallActive(true);
+    setCallStatus('Initiating call...');
+
+    try {
+      const response = await api.post('/api/calls/outbound', {
+        to: phoneNumber,
+      });
+
+      if (response.data.success) {
+        toast.success('Call initiated successfully');
+        setCallStatus(`Call ${response.data.status}`);
+
+        // Reset after 30 seconds
+        setTimeout(() => {
+          setIsCallActive(false);
+          setCallStatus('');
+        }, 30000);
+      } else {
+        toast.error(response.data.message || 'Failed to initiate call');
+        setIsCallActive(false);
+        setCallStatus('');
+      }
+    } catch (error: any) {
+      console.error('Call error:', error);
+      toast.error(error.response?.data?.message || 'Failed to initiate call');
+      setIsCallActive(false);
+      setCallStatus('');
+    }
   };
 
   if (showPlayground) {
@@ -148,6 +188,46 @@ const VoiceAgentsDashboard: React.FC = () => {
           </div>
         </motion.div>
       </div>
+
+      {/* Outbound Call Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="bg-white rounded-lg shadow-sm p-6 border border-gray-200"
+      >
+        <h3 className="text-lg font-semibold mb-4">Make Outbound Call</h3>
+        <div className="flex gap-4 items-end">
+          <div className="flex-1">
+            <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
+            <input
+              type="tel"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              placeholder="+1 (555) 123-4567"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              disabled={isCallActive}
+            />
+          </div>
+          <button
+            onClick={handleMakeCall}
+            disabled={isCallActive || !phoneNumber}
+            className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 transition-colors ${
+              isCallActive
+                ? 'bg-red-600 text-white hover:bg-red-700'
+                : 'bg-primary-600 text-white hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed'
+            }`}
+          >
+            <PhoneCall className="w-4 h-4" />
+            {isCallActive ? 'End Call' : 'Start Call'}
+          </button>
+        </div>
+        {callStatus && (
+          <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">{callStatus}</p>
+          </div>
+        )}
+      </motion.div>
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

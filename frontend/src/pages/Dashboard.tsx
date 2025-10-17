@@ -28,9 +28,11 @@ import {
 } from 'lucide-react';
 import MetricCard from '../components/dashboard/MetricCard';
 import clsx from 'clsx';
+import { useIsMobile } from '../hooks/useBreakpoint';
 
 const Dashboard: React.FC = () => {
   const [selectedTimeRange, setSelectedTimeRange] = useState('7d');
+  const isMobile = useIsMobile();
 
   // Fetch metrics data
   const { data: metricsData, isLoading: metricsLoading } = useQuery({
@@ -121,11 +123,11 @@ const Dashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Page Header */}
+    <div className="space-y-4 sm:space-y-6">
+      {/* Page Header - Mobile Responsive */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Overview</h1>
-        <p className="mt-1 text-sm text-gray-500">Monitor your voice intelligence platform performance</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Overview</h1>
+        <p className="mt-1 text-xs sm:text-sm text-gray-500">Monitor your voice intelligence platform performance</p>
       </div>
 
       {/* Active Sessions Alert */}
@@ -133,18 +135,22 @@ const Dashboard: React.FC = () => {
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center justify-between"
+          className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2"
         >
           <div className="flex items-center gap-3">
             <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-            <span className="text-sm font-medium text-green-900">{metrics.activeSessions} Active Voice Sessions</span>
+            <span className="text-xs sm:text-sm font-medium text-green-900">
+              {metrics.activeSessions} Active Voice Sessions
+            </span>
           </div>
-          <button className="text-sm text-green-700 hover:text-green-800 font-medium">View Details →</button>
+          <button className="text-xs sm:text-sm text-green-700 hover:text-green-800 font-medium self-start sm:self-auto">
+            View Details →
+          </button>
         </motion.div>
       )}
 
-      {/* Metrics Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      {/* Metrics Grid - Mobile Responsive */}
+      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
         <MetricCard
           title="Active Sessions"
           value={metrics.activeSessions}
@@ -157,7 +163,10 @@ const Dashboard: React.FC = () => {
           title="Credits Used"
           value={metrics.creditsUsed}
           subtitle="This month"
-          change={{ value: Math.round((metrics.creditsUsed / (metrics.creditsUsed + metrics.creditsRemaining)) * 100), type: metrics.creditsUsed > 0 ? 'increase' : 'neutral' }}
+          change={{
+            value: Math.round((metrics.creditsUsed / (metrics.creditsUsed + metrics.creditsRemaining)) * 100),
+            type: metrics.creditsUsed > 0 ? 'increase' : 'neutral',
+          }}
           icon={CreditCard}
           iconColor="text-blue-600"
           loading={metricsLoading}
@@ -174,8 +183,11 @@ const Dashboard: React.FC = () => {
         <MetricCard
           title="Success Rate"
           value={`${metrics.successRate}%`}
-          subtitle="Completion rate"
-          change={{ value: metrics.successRate > 90 ? 2 : -1, type: metrics.successRate > 90 ? 'increase' : 'decrease' }}
+          subtitle="Completion"
+          change={{
+            value: metrics.successRate > 90 ? 2 : -1,
+            type: metrics.successRate > 90 ? 'increase' : 'decrease',
+          }}
           icon={TrendingUp}
           iconColor="text-green-600"
           loading={metricsLoading}
@@ -191,21 +203,21 @@ const Dashboard: React.FC = () => {
         />
       </div>
 
-      {/* Charts and Progress Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Charts and Progress Section - Mobile Responsive */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Voice Volume Trend Chart */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="lg:col-span-2 bg-white rounded-xl shadow-md p-6 border border-gray-200"
+          className="lg:col-span-2 bg-white rounded-xl shadow-md p-4 sm:p-6 border border-gray-200"
         >
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">Voice Volume Trends</h2>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 sm:mb-6">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Voice Volume Trends</h2>
             <select
               value={selectedTimeRange}
               onChange={(e) => setSelectedTimeRange(e.target.value)}
-              className="px-3 py-1.5 text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="7d">Last 7 days</option>
               <option value="30d">Last 30 days</option>
@@ -213,49 +225,59 @@ const Dashboard: React.FC = () => {
             </select>
           </div>
 
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={trendsData || []}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
-              <XAxis dataKey="date" tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} />
-              <YAxis tick={{ fontSize: 12, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: 'white',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
-                }}
-              />
-              <Legend wrapperStyle={{ fontSize: '12px' }} iconType="circle" />
-              <Line
-                type="monotone"
-                dataKey="outbound"
-                stroke="#8b5cf6"
-                strokeWidth={2}
-                dot={{ fill: '#8b5cf6', r: 3 }}
-                activeDot={{ r: 5 }}
-                name="Outbound"
-              />
-              <Line
-                type="monotone"
-                dataKey="inbound"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={{ fill: '#3b82f6', r: 3 }}
-                activeDot={{ r: 5 }}
-                name="Inbound"
-              />
-              <Line
-                type="monotone"
-                dataKey="web"
-                stroke="#06b6d4"
-                strokeWidth={2}
-                dot={{ fill: '#06b6d4', r: 3 }}
-                activeDot={{ r: 5 }}
-                name="Web"
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          {/* Chart wrapper with horizontal scroll on mobile */}
+          <div className={isMobile ? 'overflow-x-auto -mx-2' : ''}>
+            <div className={isMobile ? 'min-w-[400px] px-2' : ''}>
+              <ResponsiveContainer width="100%" height={isMobile ? 200 : 250}>
+                <LineChart data={trendsData || []}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" />
+                  <XAxis
+                    dataKey="date"
+                    tick={{ fontSize: isMobile ? 10 : 12, fill: '#6b7280' }}
+                    axisLine={{ stroke: '#e5e7eb' }}
+                  />
+                  <YAxis tick={{ fontSize: isMobile ? 10 : 12, fill: '#6b7280' }} axisLine={{ stroke: '#e5e7eb' }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: 'white',
+                      border: '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                      fontSize: isMobile ? '12px' : '14px',
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: isMobile ? '10px' : '12px' }} iconType="circle" />
+                  <Line
+                    type="monotone"
+                    dataKey="outbound"
+                    stroke="#8b5cf6"
+                    strokeWidth={2}
+                    dot={{ fill: '#8b5cf6', r: isMobile ? 2 : 3 }}
+                    activeDot={{ r: isMobile ? 3 : 5 }}
+                    name="Outbound"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="inbound"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                    dot={{ fill: '#3b82f6', r: isMobile ? 2 : 3 }}
+                    activeDot={{ r: isMobile ? 3 : 5 }}
+                    name="Inbound"
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="web"
+                    stroke="#06b6d4"
+                    strokeWidth={2}
+                    dot={{ fill: '#06b6d4', r: isMobile ? 2 : 3 }}
+                    activeDot={{ r: isMobile ? 3 : 5 }}
+                    name="Web"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
         </motion.div>
 
         {/* Setup Progress */}
@@ -263,14 +285,14 @@ const Dashboard: React.FC = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.3 }}
-          className="bg-white rounded-xl shadow-md p-6 border border-gray-200"
+          className="bg-white rounded-xl shadow-md p-4 sm:p-6 border border-gray-200"
         >
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-gray-900">Setup Progress</h2>
-            <span className="text-2xl font-bold text-primary-600">{Math.round(setupProgress)}%</span>
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Setup Progress</h2>
+            <span className="text-xl sm:text-2xl font-bold text-primary-600">{Math.round(setupProgress)}%</span>
           </div>
 
-          <div className="mb-6">
+          <div className="mb-4 sm:mb-6">
             <div className="w-full bg-gray-200 rounded-full h-2">
               <motion.div
                 className="bg-gradient-to-r from-primary-500 to-primary-600 h-2 rounded-full"
@@ -281,135 +303,125 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          <div className="space-y-3">
+          <div className="space-y-2 sm:space-y-3">
             {setupSteps.map((step) => (
-              <div key={step.id} className="flex items-center gap-3">
+              <div key={step.id} className="flex items-center gap-2 sm:gap-3">
                 {step.completed ? (
-                  <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+                  <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5 text-green-500 flex-shrink-0" />
                 ) : (
-                  <div className="w-5 h-5 border-2 border-gray-300 rounded-full flex-shrink-0" />
+                  <div className="w-4 h-4 sm:w-5 sm:h-5 border-2 border-gray-300 rounded-full flex-shrink-0" />
                 )}
-                <span className={clsx('text-sm', step.completed ? 'text-gray-700' : 'text-gray-400')}>
+                <span className={clsx('text-xs sm:text-sm', step.completed ? 'text-gray-700' : 'text-gray-400')}>
                   {step.title}
                 </span>
               </div>
             ))}
           </div>
 
-          <button className="w-full mt-6 px-4 py-2 bg-primary-50 text-primary-700 rounded-lg hover:bg-primary-100 transition-colors text-sm font-medium">
-            Complete Setup →
+          <button className="w-full mt-4 sm:mt-6 px-3 sm:px-4 py-2 bg-primary-50 text-primary-700 rounded-lg hover:bg-primary-100 transition-colors text-xs sm:text-sm font-medium">
+            Complete Setup
           </button>
         </motion.div>
       </div>
 
-      {/* Second Row: Pie Chart and Activities */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Voice Outcome Breakdown */}
+      {/* Bottom Grid Section - Mobile Responsive */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+        {/* Call Outcomes */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-white rounded-xl shadow-md p-6 border border-gray-200"
+          className="bg-white rounded-xl shadow-md p-4 sm:p-6 border border-gray-200"
         >
-          <h2 className="text-lg font-semibold text-gray-900 mb-6">Call Outcomes</h2>
+          <h2 className="text-base sm:text-lg font-semibold text-gray-900 mb-4 sm:mb-6">Call Outcomes</h2>
+          {outcomesData && outcomesData.length > 0 ? (
+            <ResponsiveContainer width="100%" height={isMobile ? 180 : 220}>
+              <PieChart>
+                <Pie
+                  data={outcomesData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => (isMobile ? `${percent}%` : `${name} ${percent}%`)}
+                  outerRadius={isMobile ? 60 : 80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {outcomesData.map((_entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={['#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][index % 4]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-48 text-gray-400">
+              <p className="text-sm">No data available</p>
+            </div>
+          )}
 
-          <ResponsiveContainer width="100%" height={250}>
-            <PieChart>
-              <Pie
-                data={outcomesData || []}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={90}
-                paddingAngle={2}
-                dataKey="value"
-              >
-                {(outcomesData || []).map((entry: any, index: number) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-
-          <div className="mt-4 space-y-2">
-            {(outcomesData || []).map((item: any) => (
-              <div key={item.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="text-sm text-gray-600">{item.name}</span>
+          {/* Legend for mobile */}
+          {isMobile && outcomesData && (
+            <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+              {outcomesData.map((entry: any, index: number) => (
+                <div key={entry.name} className="flex items-center gap-1">
+                  <div
+                    className={`w-2 h-2 rounded-full`}
+                    style={{ backgroundColor: ['#10b981', '#f59e0b', '#ef4444', '#8b5cf6'][index % 4] }}
+                  />
+                  <span className="text-gray-600">{entry.name}</span>
                 </div>
-                <span className="text-sm font-medium text-gray-900">{item.value}%</span>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </motion.div>
 
-        {/* Recent Activities */}
+        {/* Recent Activity */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
-          className="lg:col-span-2 bg-white rounded-xl shadow-md p-6 border border-gray-200"
+          className="bg-white rounded-xl shadow-md p-4 sm:p-6 border border-gray-200"
         >
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-semibold text-gray-900">Recent Activities</h2>
-            <button className="text-sm text-primary-600 hover:text-primary-700 font-medium">View all →</button>
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900">Recent Activity</h2>
+            <button className="text-xs sm:text-sm text-primary-600 hover:text-primary-700 font-medium">
+              View all →
+            </button>
           </div>
 
-          <div className="space-y-4">
-            {(activitiesData || []).slice(0, 5).map((activity: any) => {
-              const Icon = getActivityIcon(activity.type);
-              const colorClass = getActivityColor(activity.status);
-
-              return (
-                <motion.div
-                  key={activity.id}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
-                >
-                  <div
-                    className={clsx('w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0', colorClass)}
+          <div className="space-y-3 sm:space-y-4">
+            {activitiesData && activitiesData.length > 0 ? (
+              activitiesData.slice(0, 5).map((activity: any, index: number) => {
+                const Icon = getActivityIcon(activity.type);
+                return (
+                  <motion.div
+                    key={activity.id || index}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: 0.1 * index }}
+                    className="flex items-center gap-3"
                   >
-                    <Icon className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{activity.description}</p>
-                    <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
-                  </div>
-                  <button className="text-gray-400 hover:text-gray-600">
-                    <ChevronRight className="w-5 h-5" />
-                  </button>
-                </motion.div>
-              );
-            })}
+                    <div className={`p-1.5 sm:p-2 rounded-lg ${getActivityColor(activity.status)}`}>
+                      <Icon className="w-3 h-3 sm:w-4 sm:h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">{activity.title}</p>
+                      <p className="text-xs text-gray-500">{activity.time}</p>
+                    </div>
+                    <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 text-gray-400" />
+                  </motion.div>
+                );
+              })
+            ) : (
+              <div className="text-center py-8 text-gray-400">
+                <Activity className="w-8 h-8 mx-auto mb-2" />
+                <p className="text-xs sm:text-sm">No recent activity</p>
+              </div>
+            )}
           </div>
         </motion.div>
       </div>
-
-      {/* Credits Bar */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6 }}
-        className="bg-gradient-to-r from-primary-50 to-primary-100 rounded-xl p-6 border border-primary-200"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center shadow-sm">
-              <CreditCard className="w-6 h-6 text-primary-600" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-gray-900">{metrics.creditsRemaining.toLocaleString()} credits remaining</p>
-              <p className="text-sm text-gray-600">Approximately {Math.round(metrics.creditsRemaining / 100)} hours of voice calls</p>
-            </div>
-          </div>
-          <button className="px-6 py-3 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors font-medium shadow-lg hover:shadow-xl">
-            Buy More Credits
-          </button>
-        </div>
-      </motion.div>
     </div>
   );
 };

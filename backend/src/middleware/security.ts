@@ -5,14 +5,12 @@ import { logger } from '../utils/logger';
 // HTTPS redirect middleware
 export const httpsRedirect = (req: Request, res: Response, next: NextFunction) => {
   // Skip in development
-  if (process.env['NODE_ENV'] === 'development') {
+  if (process.env.NODE_ENV === 'development') {
     return next();
   }
 
   // Check if request is secure
-  const isSecure = req.secure ||
-    req.header('x-forwarded-proto') === 'https' ||
-    req.header('x-forwarded-ssl') === 'on';
+  const isSecure = req.secure || req.header('x-forwarded-proto') === 'https' || req.header('x-forwarded-ssl') === 'on';
 
   if (!isSecure) {
     const secureUrl = `https://${req.header('host')}${req.url}`;
@@ -63,14 +61,17 @@ export const idempotencyMiddleware = (req: Request, res: Response, next: NextFun
 };
 
 // Clean up old idempotency records
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of idempotencyStore.entries()) {
-    if (now - value.timestamp > 24 * 60 * 60 * 1000) {
-      idempotencyStore.delete(key);
+setInterval(
+  () => {
+    const now = Date.now();
+    for (const [key, value] of idempotencyStore.entries()) {
+      if (now - value.timestamp > 24 * 60 * 60 * 1000) {
+        idempotencyStore.delete(key);
+      }
     }
-  }
-}, 60 * 60 * 1000);
+  },
+  60 * 60 * 1000
+);
 
 // Security headers middleware
 export const securityHeaders = (_req: Request, res: Response, next: NextFunction) => {
@@ -90,14 +91,15 @@ export const securityHeaders = (_req: Request, res: Response, next: NextFunction
   res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
 
   // Content Security Policy
-  if (process.env['NODE_ENV'] === 'production') {
-    res.setHeader('Content-Security-Policy',
+  if (process.env.NODE_ENV === 'production') {
+    res.setHeader(
+      'Content-Security-Policy',
       "default-src 'self'; " +
-      "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-      "font-src 'self' https://fonts.gstatic.com; " +
-      "img-src 'self' data: https:; " +
-      "connect-src 'self' wss: https:"
+        "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+        "font-src 'self' https://fonts.gstatic.com; " +
+        "img-src 'self' data: https:; " +
+        "connect-src 'self' wss: https:"
     );
   }
 
@@ -105,8 +107,9 @@ export const securityHeaders = (_req: Request, res: Response, next: NextFunction
 };
 
 // Request signature verification for webhooks
-export const verifyWebhookSignature = (secret: string) => {
-  return (req: Request, res: Response, next: NextFunction): void => {
+export const verifyWebhookSignature =
+  (secret: string) =>
+  (req: Request, res: Response, next: NextFunction): void => {
     const signature = req.header('X-Webhook-Signature');
     if (!signature) {
       logger.warn('Missing webhook signature');
@@ -114,10 +117,7 @@ export const verifyWebhookSignature = (secret: string) => {
       return;
     }
 
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(JSON.stringify(req.body))
-      .digest('hex');
+    const expectedSignature = crypto.createHmac('sha256', secret).update(JSON.stringify(req.body)).digest('hex');
 
     if (signature !== expectedSignature) {
       logger.warn('Invalid webhook signature', { received: signature });
@@ -127,11 +127,10 @@ export const verifyWebhookSignature = (secret: string) => {
 
     next();
   };
-};
 
 // API key authentication middleware
 export const apiKeyAuth = (req: Request, res: Response, next: NextFunction): void => {
-  const apiKey = req.header('X-API-Key') || req.query['api_key'];
+  const apiKey = req.header('X-API-Key') || req.query.api_key;
 
   if (!apiKey) {
     res.status(401).json({ error: 'API key required' });
@@ -139,7 +138,7 @@ export const apiKeyAuth = (req: Request, res: Response, next: NextFunction): voi
   }
 
   // Validate API key (this should check against database in production)
-  const validApiKeys = (process.env['VALID_API_KEYS'] || '').split(',');
+  const validApiKeys = (process.env.VALID_API_KEYS || '').split(',');
   if (!validApiKeys.includes(apiKey as string)) {
     logger.warn('Invalid API key attempt', { apiKey, ip: req.ip });
     res.status(401).json({ error: 'Invalid API key' });
@@ -163,7 +162,7 @@ export const requestLogging = (req: Request, res: Response, next: NextFunction) 
   });
 
   // Add Sentry breadcrumb
-  if (process.env['NODE_ENV'] === 'production' && (global as any).Sentry) {
+  if (process.env.NODE_ENV === 'production' && (global as any).Sentry) {
     (global as any).Sentry.addBreadcrumb({
       category: 'request',
       message: `${req.method} ${req.path}`,
@@ -187,7 +186,7 @@ export const requestLogging = (req: Request, res: Response, next: NextFunction) 
     });
 
     // Add Sentry breadcrumb for response
-    if (process.env['NODE_ENV'] === 'production' && (global as any).Sentry) {
+    if (process.env.NODE_ENV === 'production' && (global as any).Sentry) {
       (global as any).Sentry.addBreadcrumb({
         category: 'response',
         message: `${res.statusCode} ${req.method} ${req.path}`,

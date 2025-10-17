@@ -1,8 +1,8 @@
 import { tool } from '@openai/agents';
 import { z } from 'zod';
-import Logger from '../../utils/logger';
+// import Logger from '../../utils/logger';
 
-const logger = Logger;
+// const logger = Logger;
 
 export class TokenUsageTool {
   static trackTokenUsage = tool({
@@ -12,29 +12,26 @@ export class TokenUsageTool {
       tokens: z.number().describe('Number of tokens used'),
       operation: z.string().describe('Operation that used tokens'),
     }),
-    execute: async (input, context: any) => {
+    execute: async (input, _context: any) =>
       // Implementation would integrate with token billing system
-      return { success: true, message: `Tracked ${input.tokens} tokens` };
-    },
+      ({ success: true, message: `Tracked ${input.tokens} tokens` }),
   });
 
   static getTokenBalance = tool({
     name: 'get_token_balance',
     description: 'Get current token balance',
     parameters: z.object({}),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Implementation would go here
-      return { success: true, balance: 1000, limit: 5000 };
-    },
+      ({ success: true, balance: 1000, limit: 5000 }),
   });
 
   static checkTokenLimit = tool({
     name: 'check_token_limit',
     description: 'Check if token limit is reached',
     parameters: z.object({}),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Implementation would go here
-      return { success: true, withinLimit: true };
-    },
+      ({ success: true, withinLimit: true }),
   });
 }

@@ -1,46 +1,65 @@
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import twilio from 'twilio';
-import { voiceAgentHandler } from '../socket/voiceAgentHandler';
 import { authenticate } from '../middleware/auth';
 import { supabaseAdmin } from '../config/supabase';
 import logger from '../utils/logger';
+import { voiceAgentHandler } from '../socket/voiceAgentHandler';
 
 const router = Router();
 
-interface SessionConfig {
-  model: string;
-  voice: string;
-  instructions: string;
-  inputAudioTranscription: {
-    enabled: boolean;
-    model: string;
-  };
-  turnDetection: {
-    type: 'server_vad' | 'none';
-    serverVad?: {
-      threshold: number;
-      prefixPaddingMs: number;
-      silenceDurationMs: number;
-    };
-  };
-  tools?: Array<{
-    name: string;
-    description: string;
-    parameters: Record<string, any>;
-  }>;
-  temperature: number;
-  maxResponseOutputTokens: number | 'inf';
-  vadMode: 'server_vad' | 'disabled';
-  modalities: string[];
-  audioFormat: 'pcm16' | 'g711_ulaw' | 'g711_alaw';
-}
+const twilioClient =
+  process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
+    ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
+    : null;
 
-const twilioClient = process.env['TWILIO_ACCOUNT_SID'] && process.env['TWILIO_AUTH_TOKEN']
-  ? twilio(process.env['TWILIO_ACCOUNT_SID'], process.env['TWILIO_AUTH_TOKEN'])
-  : null;
+// Initiate outbound call - SIMPLIFIED without businessId
+router.post('/outbound', async (req: Request, res: Response): Promise<Response> => {
+  try {
+    const { to } = req.body;
 
-// Initiate outbound call with full OpenAI Realtime configuration
+    if (!to) {
+      return res.status(400).json({ success: false, message: 'Phone number is required' });
+    }
+
+    if (!twilioClient) {
+      return res.status(500).json({ success: false, message: 'Twilio not configured' });
+    }
+
+    const fromNumber = process.env.TWILIO_PHONE_NUMBER || '+15551234567';
+    const backendUrl = process.env.BACKEND_URL || 'https://verbio-backend-995705962018.us-central1.run.app';
+
+    // Create the call with a simple agent
+    const call = await twilioClient.calls.create({
+      to,
+      from: fromNumber,
+      url: `${backendUrl}/api/twilio/webhook`,
+      statusCallback: `${backendUrl}/api/twilio/status`,
+      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
+    });
+
+    logger.info('Outbound call initiated', {
+      callSid: call.sid,
+      to,
+      from: fromNumber,
+    });
+
+    return res.json({
+      success: true,
+      callSid: call.sid,
+      status: call.status,
+      message: 'Call initiated successfully',
+    });
+  } catch (error) {
+    logger.error('Failed to initiate outbound call', { error });
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to initiate call',
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
 // Get call recordings
 router.get('/recordings', authenticate, async (req: Request, res: Response): Promise<Response> => {
   try {
@@ -72,9 +91,7 @@ router.get('/recordings', authenticate, async (req: Request, res: Response): Pro
 
     // Filter recordings to only those belonging to this business
     const callSids = callLogs.map((log) => log.call_sid);
-    const businessRecordings = recordings.filter((rec) =>
-      callSids.includes(rec.callSid),
-    );
+    const businessRecordings = recordings.filter((rec) => callSids.includes(rec.callSid));
 
     // Map and format the recordings with proper phone number lookup
     const formattedRecordings = await Promise.all(
@@ -98,7 +115,7 @@ router.get('/recordings', authenticate, async (req: Request, res: Response): Pro
           createdAt: recording.dateCreated,
           phoneNumber,
         };
-      }),
+      })
     );
 
     return res.json({ success: true, data: formattedRecordings });
@@ -237,133 +254,10 @@ router.delete('/recordings/:recordingSid', authenticate, async (req: Request, re
   }
 });
 
-router.post('/outbound', authenticate, async (req: Request, res: Response): Promise<Response> => {
-  try {
-    const { phoneNumber, config, businessId, recording } = req.body;
-    const userId = (req as any).user?.userId;
-
-    if (!phoneNumber || !businessId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Phone number and business ID are required',
-      });
-    }
-
-    if (!twilioClient) {
-      return res.status(500).json({
-        success: false,
-        message: 'Twilio not configured',
-      });
-    }
-
-    // Verify user has access to this business
-    const { data: business, error: businessError } = await supabaseAdmin
-      .from('businesses')
-      .select('id')
-      .eq('id', businessId)
-      .eq('user_id', userId)
-      .single();
-
-    if (businessError || !business) {
-      return res.status(403).json({
-        success: false,
-        message: 'Unauthorized to initiate calls for this business',
-      });
-    }
-
-    // Get agent configuration if exists
-    const { data: agent } = await supabaseAdmin
-      .from('agents')
-      .select('*')
-      .eq('business_id', businessId)
-      .eq('is_active', true)
-      .single();
-
-    // Merge configurations
-    const mergedConfig: SessionConfig = {
-      ...config,
-      instructions: config.instructions || agent?.prompt || 'You are a helpful AI assistant.',
-      voice: config.voice || agent?.voice_config?.voice || 'alloy',
-    };
-
-    const callId = uuidv4();
-
-    // Create call log
-    const { error: logError } = await supabaseAdmin
-      .from('call_logs')
-      .insert({
-        call_sid: `pending-${callId}`,
-        business_id: businessId,
-        agent_id: agent?.id || null,
-        from_number: process.env['TWILIO_PHONE_NUMBER'] || 'system',
-        to_number: phoneNumber,
-        status: 'initiated',
-      })
-      .select()
-      .single();
-
-    if (logError) {
-      logger.error('Failed to create call log:', logError);
-      throw logError;
-    }
-
-    // Create Twilio call with WebSocket stream
-    const baseUrl = process.env['BASE_URL'] || `https://${req.get('host')}`;
-    const wsUrl = baseUrl.replace('https://', 'wss://').replace('http://', 'ws://');
-
-    const callCreateOptions: any = {
-      to: phoneNumber,
-      from: process.env['TWILIO_PHONE_NUMBER']!,
-      record: recording === true,
-      twiml: `<Response>
-        <Connect>
-          <Stream url="${wsUrl}/ws/twilio-stream">
-            <Parameter name="businessId" value="${businessId}" />
-            <Parameter name="callId" value="${callId}" />
-            <Parameter name="config" value="${Buffer.from(JSON.stringify(mergedConfig)).toString('base64')}" />
-          </Stream>
-        </Connect>
-      </Response>`,
-      statusCallback: `${baseUrl}/api/calls/twilio/status?callId=${callId}`,
-      statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
-      machineDetection: 'DetectMessageEnd',
-      asyncAmd: 'true',
-    };
-
-    if (recording === true) {
-      callCreateOptions.recordingChannels = 'dual';
-      callCreateOptions.recordingStatusCallback = `${baseUrl}/api/calls/recording-status`;
-    }
-
-    const call = await twilioClient.calls.create(callCreateOptions);
-
-    // Update call log with Twilio SID
-    await supabaseAdmin
-      .from('call_logs')
-      .update({ call_sid: call.sid })
-      .eq('call_sid', `pending-${callId}`);
-
-    logger.info(`Outbound call initiated: ${call.sid} to ${phoneNumber}`);
-
-    return res.json({
-      success: true,
-      callId,
-      callSid: call.sid,
-      status: call.status,
-    });
-  } catch (error: any) {
-    logger.error('Error initiating outbound call:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || 'Failed to initiate call',
-    });
-  }
-});
-
 // Legacy initiate endpoint (backward compatibility)
 router.post('/initiate', authenticate, async (req: Request, res: Response): Promise<Response> => {
   try {
-    const { phoneNumber, settings, businessId } = req.body;
+    const { phoneNumber, businessId } = req.body;
     const userId = (req as any).user?.userId;
 
     if (!phoneNumber || !businessId) {
@@ -400,34 +294,22 @@ router.post('/initiate', authenticate, async (req: Request, res: Response): Prom
     const callId = uuidv4();
 
     // Log call initiation to database
-    const { error: logError } = await supabaseAdmin
-      .from('call_logs')
-      .insert({
-        call_sid: `pending-${callId}`,
-        business_id: businessId,
-        agent_id: null,
-        from_number: 'system',
-        to_number: phoneNumber,
-        status: 'initiated',
-      });
+    const { error: logError } = await supabaseAdmin.from('call_logs').insert({
+      call_sid: `pending-${callId}`,
+      business_id: businessId,
+      agent_id: null,
+      from_number: 'system',
+      to_number: phoneNumber,
+      status: 'initiated',
+    });
 
     if (logError) {
       logger.error('Failed to log call initiation:', logError);
     }
 
-    // Initiate the call
-    const result = await voiceAgentHandler.initiateOutboundCall(
-      phoneNumber,
-      callId,
-      businessId,
-      settings || {},
-    );
+    const result = await voiceAgentHandler.initiateOutboundCall(phoneNumber, callId, businessId, {});
 
-    // Update call log with actual call SID
-    await supabaseAdmin
-      .from('call_logs')
-      .update({ call_sid: result.callSid })
-      .eq('call_sid', `pending-${callId}`);
+    await supabaseAdmin.from('call_logs').update({ call_sid: result.callSid }).eq('call_sid', `pending-${callId}`);
 
     return res.json({
       success: true,
@@ -452,9 +334,9 @@ router.post('/twilio/voice-agent-twiml', async (req: Request, res: Response): Pr
       return res.status(400).send('Missing call ID');
     }
 
-    const twiml = voiceAgentHandler.getTwilioResponseForCall(callId as string);
+    const twimlResponse = voiceAgentHandler.getTwilioResponseForCall(callId as string);
     res.type('text/xml');
-    return res.send(twiml);
+    return res.send(twimlResponse);
   } catch (error) {
     logger.error('Error generating TwiML:', error);
     return res.status(500).send('Error generating TwiML');
@@ -465,7 +347,7 @@ router.post('/twilio/voice-agent-twiml', async (req: Request, res: Response): Pr
 router.post('/twilio/status', async (req: Request, res: Response) => {
   try {
     const { CallSid, CallStatus, CallDuration, RecordingUrl } = req.body;
-    const callId = req.query['callId'] as string;
+    const callId = req.query.callId as string;
 
     logger.info(`Call status update: ${CallSid} - ${CallStatus} (duration: ${CallDuration}s)`);
 
@@ -497,10 +379,17 @@ router.post('/twilio/status', async (req: Request, res: Response) => {
     if (CallStatus === 'completed' || CallStatus === 'failed' || CallStatus === 'no-answer' || CallStatus === 'busy') {
       updateData.ended_at = new Date().toISOString();
 
-      // Notify any active WebSocket connections
       if (callId) {
-        logger.info('Call completed', { callId, status: CallStatus });
+        voiceAgentHandler.handleCallStatusUpdate(callId, CallStatus, {
+          callSid: CallSid,
+          durationSeconds: CallDuration ? parseInt(CallDuration, 10) : undefined,
+          recordingUrl: RecordingUrl,
+        });
       }
+    } else if (callId) {
+      voiceAgentHandler.handleCallStatusUpdate(callId, CallStatus, {
+        callSid: CallSid,
+      });
     }
 
     res.sendStatus(200);
@@ -514,7 +403,7 @@ router.post('/twilio/status', async (req: Request, res: Response) => {
 router.post('/twilio/voice-agent-status', async (req: Request, res: Response) => {
   try {
     const { CallSid, CallStatus, CallDuration, RecordingUrl } = req.body;
-    const callId = req.query['callId'] as string;
+    const callId = req.query.callId as string;
 
     logger.info(`Call status update: ${CallSid} - ${CallStatus} (duration: ${CallDuration}s)`);
 
@@ -532,10 +421,7 @@ router.post('/twilio/voice-agent-status', async (req: Request, res: Response) =>
       updateData.recording_url = RecordingUrl;
     }
 
-    const { error } = await supabaseAdmin
-      .from('call_logs')
-      .update(updateData)
-      .eq('call_sid', CallSid);
+    const { error } = await supabaseAdmin.from('call_logs').update(updateData).eq('call_sid', CallSid);
 
     if (error) {
       logger.error('Failed to update call status:', error);
@@ -597,7 +483,8 @@ router.get('/history', authenticate, async (_req: Request, res: Response): Promi
     // Build query
     let query = supabaseAdmin
       .from('call_logs')
-      .select(`
+      .select(
+        `
         *,
         agents (
           id,
@@ -610,7 +497,9 @@ router.get('/history', authenticate, async (_req: Request, res: Response): Promi
           text,
           timestamp
         )
-      `, { count: 'exact' })
+      `,
+        { count: 'exact' }
+      )
       .eq('business_id', businessId)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
@@ -684,7 +573,8 @@ router.get('/history/:callId', authenticate, async (_req: Request, res: Response
     // Fetch call details with full relationships
     const { data: call, error: callError } = await supabaseAdmin
       .from('call_logs')
-      .select(`
+      .select(
+        `
         *,
         businesses (
           id,
@@ -712,7 +602,8 @@ router.get('/history/:callId', authenticate, async (_req: Request, res: Response
           status,
           payment_status
         )
-      `)
+      `
+      )
       .eq('call_sid', callId)
       .single();
 
@@ -831,8 +722,7 @@ router.get('/analytics', authenticate, async (_req: Request, res: Response): Pro
       callsByHour[hour] = (callsByHour[hour] || 0) + 1;
     });
 
-    const peakHour = Object.entries(callsByHour)
-      .sort(([, a], [, b]) => b - a)[0]?.[0] || 0;
+    const peakHour = Object.entries(callsByHour).sort(([, a], [, b]) => b - a)[0]?.[0] || 0;
 
     // Calculate success rate
     const successRate = totalCalls > 0 ? (completedCalls / totalCalls) * 100 : 0;
@@ -850,15 +740,16 @@ router.get('/analytics', authenticate, async (_req: Request, res: Response): Pro
         },
         trends: {
           daily: Object.entries(callsByDay).map(([date, count]) => ({ date, count })),
-          hourly: Object.entries(callsByHour).map(([hour, count]) => ({
-            hour: parseInt(hour),
-            count,
-          })).sort((a, b) => a.hour - b.hour),
+          hourly: Object.entries(callsByHour)
+            .map(([hour, count]) => ({
+              hour: parseInt(hour),
+              count,
+            }))
+            .sort((a, b) => a.hour - b.hour),
         },
         insights: {
           peakHour: `${peakHour}:00`,
-          busiestDay: Object.entries(callsByDay)
-            .sort(([, a], [, b]) => b - a)[0]?.[0] || 'N/A',
+          busiestDay: Object.entries(callsByDay).sort(([, a], [, b]) => b - a)[0]?.[0] || 'N/A',
           avgCallsPerDay: Math.round(totalCalls / Math.max(1, Object.keys(callsByDay).length)),
         },
       },

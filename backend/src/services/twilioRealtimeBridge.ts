@@ -49,9 +49,10 @@ interface BridgeConfig {
   customerPhone: string;
   twilioStreamSid?: string;
   twilioCallSid?: string;
+  callId?: string;
+  direction?: 'inbound' | 'outbound';
   voice?: 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer' | 'cedar' | 'marin';
   systemPrompt?: string;
-  temperature?: number;
   tools?: Tool[];
 }
 
@@ -63,18 +64,31 @@ interface AudioBuffer {
 
 export class TwilioOpenAIRealtimeBridge extends EventEmitter {
   private twilioWs: WebSocket | null = null;
+
   private openaiService: OpenAIRealtimeService | null = null;
+
   private config: BridgeConfig;
+
   private sessionId: string;
+
   private audioBuffer: AudioBuffer;
+
   private isConnected: boolean = false;
+
   private streamSid?: string;
+
   private callSid?: string;
+
   private ffmpegProcesses: Map<string, ChildProcessWithoutNullStreams> = new Map();
+
   private lastActivityTime: number = Date.now();
+
   private activityTimeout?: NodeJS.Timeout;
+
   private reconnectAttempts: number = 0;
+
   private maxReconnectAttempts: number = 3;
+
   private metrics: {
     packetsReceived: number;
     packetsSent: number;
@@ -83,7 +97,9 @@ export class TwilioOpenAIRealtimeBridge extends EventEmitter {
     startTime: number;
     errors: number;
   };
+
   private sequenceTracker: Map<string, number> = new Map();
+
   private tempDir: string;
 
   constructor(config: BridgeConfig) {
@@ -133,6 +149,8 @@ export class TwilioOpenAIRealtimeBridge extends EventEmitter {
       logger.info('Bridge initialized successfully', {
         sessionId: this.sessionId,
         businessId: this.config.businessId,
+        callId: this.config.callId,
+        direction: this.config.direction,
       });
 
       this.emit('initialized', { sessionId: this.sessionId });
@@ -206,6 +224,8 @@ export class TwilioOpenAIRealtimeBridge extends EventEmitter {
           streamSid: this.streamSid,
           callSid: this.callSid,
           sessionId: this.sessionId,
+          callId: this.config.callId,
+          direction: this.config.direction,
         });
         await this.logCallStart();
         break;
@@ -248,7 +268,7 @@ export class TwilioOpenAIRealtimeBridge extends EventEmitter {
 
     try {
       const sequenceNumber = parseInt(media.timestamp, 10);
-      const track = media.track;
+      const { track } = media;
 
       // Track sequence for packet loss detection
       const lastSequence = this.sequenceTracker.get(track) || -1;
@@ -297,7 +317,6 @@ export class TwilioOpenAIRealtimeBridge extends EventEmitter {
     const openaiConfig = {
       voice: this.config.voice || 'cedar',
       systemPrompt: this.config.systemPrompt || 'You are a helpful AI assistant.',
-      temperature: this.config.temperature || 0.8,
       tools: this.config.tools || [],
       onTranscription: this.handleTranscription.bind(this),
       onError: this.handleOpenAIError.bind(this),
@@ -326,7 +345,7 @@ export class TwilioOpenAIRealtimeBridge extends EventEmitter {
     this.emit('transcription', { role, content, sessionId: this.sessionId });
 
     // Store transcription in database
-    this.storeTranscription(role, content).catch(error => {
+    this.storeTranscription(role, content).catch((error) => {
       logger.error('Failed to store transcription', { error });
     });
   }
@@ -375,10 +394,12 @@ export class TwilioOpenAIRealtimeBridge extends EventEmitter {
 
     // Send clear message to Twilio to reset audio
     if (this.twilioWs?.readyState === WebSocket.OPEN) {
-      this.twilioWs.send(JSON.stringify({
-        event: 'clear',
-        streamSid: this.streamSid,
-      }));
+      this.twilioWs.send(
+        JSON.stringify({
+          event: 'clear',
+          streamSid: this.streamSid,
+        })
+      );
     }
   }
 
@@ -417,10 +438,12 @@ export class TwilioOpenAIRealtimeBridge extends EventEmitter {
   private handleSpeechStarted(): void {
     // Optionally interrupt Twilio playback
     if (this.twilioWs?.readyState === WebSocket.OPEN) {
-      this.twilioWs.send(JSON.stringify({
-        event: 'clear',
-        streamSid: this.streamSid,
-      }));
+      this.twilioWs.send(
+        JSON.stringify({
+          event: 'clear',
+          streamSid: this.streamSid,
+        })
+      );
     }
   }
 
@@ -440,13 +463,15 @@ export class TwilioOpenAIRealtimeBridge extends EventEmitter {
 
     // Send mark to Twilio to indicate response completion
     if (this.twilioWs?.readyState === WebSocket.OPEN) {
-      this.twilioWs.send(JSON.stringify({
-        event: 'mark',
-        streamSid: this.streamSid,
-        mark: {
-          name: `response_${response.id}`,
-        },
-      }));
+      this.twilioWs.send(
+        JSON.stringify({
+          event: 'mark',
+          streamSid: this.streamSid,
+          mark: {
+            name: `response_${response.id}`,
+          },
+        })
+      );
     }
   }
 
@@ -499,7 +524,8 @@ export class TwilioOpenAIRealtimeBridge extends EventEmitter {
   private startActivityMonitoring(): void {
     this.activityTimeout = setInterval(() => {
       const inactiveTime = Date.now() - this.lastActivityTime;
-      if (inactiveTime > 120000) { // 2 minutes of inactivity
+      if (inactiveTime > 120000) {
+        // 2 minutes of inactivity
         logger.warn('Connection inactive, initiating cleanup', {
           sessionId: this.sessionId,
         });

@@ -46,8 +46,11 @@ export interface UsageTracking {
 
 export class TokenService {
   private static instance: TokenService;
+
   private tokenRatesCache: Map<string, TokenRate> = new Map();
+
   private cacheExpiry: number = 5 * 60 * 1000; // 5 minutes
+
   private lastCacheUpdate: number = 0;
 
   private constructor() {}
@@ -65,7 +68,7 @@ export class TokenService {
   async getOrCreateBalance(businessId: string): Promise<TokenBalance> {
     try {
       // Try to get existing balance
-      const { data: balance, error: fetchError } = await supabaseAdmin
+      const { data: balance } = await supabaseAdmin
         .from('token_balances')
         .select('*')
         .eq('business_id', businessId)
@@ -87,7 +90,7 @@ export class TokenService {
       }
 
       // Create new balance with trial tokens if applicable
-      const initialBalance = business?.trial_tokens_used ? 0 : (business?.trial_tokens_granted || 100);
+      const initialBalance = business?.trial_tokens_used ? 0 : business?.trial_tokens_granted || 100;
 
       const { data: newBalance, error: createError } = await supabaseAdmin
         .from('token_balances')
@@ -105,10 +108,7 @@ export class TokenService {
 
       // Mark trial tokens as used
       if (initialBalance > 0 && !business?.trial_tokens_used) {
-        await supabaseAdmin
-          .from('businesses')
-          .update({ trial_tokens_used: true })
-          .eq('id', businessId);
+        await supabaseAdmin.from('businesses').update({ trial_tokens_used: true }).eq('id', businessId);
 
         // Log the trial token grant
         await this.logTransaction({
@@ -183,7 +183,7 @@ export class TokenService {
         balanceBefore: balance.currentBalance,
         balanceAfter: newBalance,
         description,
-        metadata,
+        metadata: metadata || {},
       });
 
       // Send low balance alert if needed
@@ -212,7 +212,7 @@ export class TokenService {
       const balance = await this.getOrCreateBalance(businessId);
       const newBalance = balance.currentBalance + amount;
 
-      let updateData: any = {
+      const updateData: any = {
         current_balance: newBalance,
         low_balance_alert_sent: false, // Reset alert
       };
@@ -245,12 +245,17 @@ export class TokenService {
         balanceBefore: balance.currentBalance,
         balanceAfter: newBalance,
         description,
-        metadata,
+        metadata: metadata || {},
       });
 
       return this.mapToTokenBalance(updatedBalance);
     } catch (error) {
-      logger.error('Error adding tokens', { error, businessId, amount, type });
+      logger.error('Error adding tokens', {
+        error,
+        businessId,
+        amount,
+        type,
+      });
       throw new AppError('Failed to add tokens', 500);
     }
   }
@@ -275,7 +280,7 @@ export class TokenService {
 
       switch (rate.unitType) {
         case 'minute':
-          baseTokens = (duration || 0) / 60 * rate.tokensPerUnit;
+          baseTokens = ((duration || 0) / 60) * rate.tokensPerUnit;
           break;
         case 'message':
         case 'request':
@@ -303,34 +308,27 @@ export class TokenService {
   async trackUsage(usage: UsageTracking): Promise<void> {
     try {
       // Insert usage record
-      const { error: insertError } = await supabaseAdmin
-        .from('usage_tracking')
-        .insert({
-          business_id: usage.businessId,
-          service_type: usage.serviceType,
-          reference_id: usage.referenceId,
-          tokens_consumed: usage.tokensConsumed,
-          duration_seconds: usage.durationSeconds,
-          multiplier: usage.multiplier || 1.0,
-          metadata: usage.metadata || {},
-        });
+      const { error: insertError } = await supabaseAdmin.from('usage_tracking').insert({
+        business_id: usage.businessId,
+        service_type: usage.serviceType,
+        reference_id: usage.referenceId,
+        tokens_consumed: usage.tokensConsumed,
+        duration_seconds: usage.durationSeconds,
+        multiplier: usage.multiplier || 1.0,
+        metadata: usage.metadata || {},
+      });
 
       if (insertError) {
         throw insertError;
       }
 
       // Deduct tokens from balance
-      await this.deductTokens(
-        usage.businessId,
-        usage.tokensConsumed,
-        `${usage.serviceType} usage`,
-        {
-          serviceType: usage.serviceType,
-          referenceId: usage.referenceId,
-          duration: usage.durationSeconds,
-          ...usage.metadata,
-        }
-      );
+      await this.deductTokens(usage.businessId, usage.tokensConsumed, `${usage.serviceType} usage`, {
+        serviceType: usage.serviceType,
+        referenceId: usage.referenceId,
+        duration: usage.durationSeconds,
+        ...usage.metadata,
+      });
     } catch (error) {
       logger.error('Error tracking usage', { error, usage });
     }
@@ -347,10 +345,7 @@ export class TokenService {
       }
 
       // Fetch from database
-      const { data: rates, error } = await supabaseAdmin
-        .from('token_rates')
-        .select('*')
-        .eq('is_active', true);
+      const { data: rates, error } = await supabaseAdmin.from('token_rates').select('*').eq('is_active', true);
 
       if (error) {
         throw error;
@@ -358,7 +353,7 @@ export class TokenService {
 
       // Update cache
       this.tokenRatesCache.clear();
-      rates?.forEach(rate => {
+      rates?.forEach((rate) => {
         this.tokenRatesCache.set(rate.service_type, {
           serviceType: rate.service_type,
           tokensPerUnit: rate.tokens_per_unit,
@@ -380,20 +375,18 @@ export class TokenService {
    */
   private async logTransaction(transaction: TokenTransaction): Promise<void> {
     try {
-      const { error } = await supabaseAdmin
-        .from('token_transactions')
-        .insert({
-          business_id: transaction.businessId,
-          type: transaction.type,
-          amount: transaction.amount,
-          balance_before: transaction.balanceBefore || 0,
-          balance_after: transaction.balanceAfter || 0,
-          description: transaction.description,
-          metadata: transaction.metadata || {},
-          reference_type: transaction.referenceType,
-          reference_id: transaction.referenceId,
-          stripe_payment_id: transaction.stripePaymentId,
-        });
+      const { error } = await supabaseAdmin.from('token_transactions').insert({
+        business_id: transaction.businessId,
+        type: transaction.type,
+        amount: transaction.amount,
+        balance_before: transaction.balanceBefore || 0,
+        balance_after: transaction.balanceAfter || 0,
+        description: transaction.description,
+        metadata: transaction.metadata || {},
+        reference_type: transaction.referenceType,
+        reference_id: transaction.referenceId,
+        stripe_payment_id: transaction.stripePaymentId,
+      });
 
       if (error) {
         logger.error('Error logging transaction', { error, transaction });
@@ -468,10 +461,7 @@ export class TokenService {
     dailyUsage: Array<{ date: string; tokens: number }>;
   }> {
     try {
-      let query = supabaseAdmin
-        .from('usage_tracking')
-        .select('*')
-        .eq('business_id', businessId);
+      let query = supabaseAdmin.from('usage_tracking').select('*').eq('business_id', businessId);
 
       if (startDate) {
         query = query.gte('created_at', startDate.toISOString());
@@ -496,7 +486,7 @@ export class TokenService {
 
       const dailyMap = new Map<string, number>();
 
-      data?.forEach(usage => {
+      data?.forEach((usage) => {
         stats.totalTokensConsumed += usage.tokens_consumed;
 
         if (!stats.byServiceType[usage.service_type]) {
@@ -504,7 +494,7 @@ export class TokenService {
         }
         stats.byServiceType[usage.service_type] += usage.tokens_consumed;
 
-        const date = new Date(usage.created_at).toISOString().split('T')[0];
+        const date = new Date(usage.created_at).toISOString().split('T')[0]!;
         dailyMap.set(date, (dailyMap.get(date) || 0) + usage.tokens_consumed);
       });
 

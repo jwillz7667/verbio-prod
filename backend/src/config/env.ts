@@ -38,7 +38,10 @@ const envSchema = z.object({
   STRIPE_PUBLISHABLE_KEY: z.string().optional(),
 
   // Sentry Configuration
-  SENTRY_DSN: z.string().optional().transform(val => val && val.trim() !== '' ? val : undefined),
+  SENTRY_DSN: z
+    .string()
+    .optional()
+    .transform((val) => (val && val.trim() !== '' ? val : undefined)),
   SENTRY_ENVIRONMENT: z.string().optional(),
 
   // Redis Configuration
@@ -55,10 +58,22 @@ const envSchema = z.object({
   RATE_LIMIT_MAX_REQUESTS: z.string().default('100'),
 
   // Feature Flags
-  ENABLE_SENTRY: z.string().transform(val => val === 'true').default('false'),
-  ENABLE_RATE_LIMITING: z.string().transform(val => val === 'true').default('true'),
-  ENABLE_CSRF_PROTECTION: z.string().transform(val => val === 'true').default('false'),
-  ENABLE_WEBSOCKET_AUTH: z.string().transform(val => val === 'true').default('true'),
+  ENABLE_SENTRY: z
+    .string()
+    .transform((val) => val === 'true')
+    .default('false'),
+  ENABLE_RATE_LIMITING: z
+    .string()
+    .transform((val) => val === 'true')
+    .default('true'),
+  ENABLE_CSRF_PROTECTION: z
+    .string()
+    .transform((val) => val === 'true')
+    .default('false'),
+  ENABLE_WEBSOCKET_AUTH: z
+    .string()
+    .transform((val) => val === 'true')
+    .default('true'),
 
   // Database Configuration
   DATABASE_URL: z.string().optional(),

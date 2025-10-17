@@ -14,7 +14,10 @@ const sanitizeString = (value: any): string => {
   });
 
   // Remove SQL injection attempts
-  sanitized = sanitized.replace(/(\b(SELECT|INSERT|UPDATE|DELETE|DROP|UNION|CREATE|ALTER|EXEC|EXECUTE|SCRIPT|JAVASCRIPT|EVAL)\b)/gi, '');
+  sanitized = sanitized.replace(
+    /(\b(SELECT|INSERT|UPDATE|DELETE|DROP|UNION|CREATE|ALTER|EXEC|EXECUTE|SCRIPT|JAVASCRIPT|EVAL)\b)/gi,
+    ''
+  );
 
   // Trim and normalize whitespace
   sanitized = validator.trim(sanitized);
@@ -62,11 +65,13 @@ export const sanitizationMiddleware = (req: Request, _res: Response, next: NextF
     }
 
     // Log suspicious activity
-    const originalUrl = req.originalUrl;
-    if (originalUrl.includes('<script>') ||
-        originalUrl.includes('javascript:') ||
-        originalUrl.includes('SELECT') ||
-        originalUrl.includes('DROP')) {
+    const { originalUrl } = req;
+    if (
+      originalUrl.includes('<script>') ||
+      originalUrl.includes('javascript:') ||
+      originalUrl.includes('SELECT') ||
+      originalUrl.includes('DROP')
+    ) {
       logger.warn('Potential malicious request detected', {
         ip: req.ip,
         url: originalUrl,
@@ -82,25 +87,19 @@ export const sanitizationMiddleware = (req: Request, _res: Response, next: NextF
   }
 };
 
-export const validateEmail = (email: string): boolean => {
-  return validator.isEmail(email);
-};
+export const validateEmail = (email: string): boolean => validator.isEmail(email);
 
-export const validatePhoneNumber = (phone: string): boolean => {
-  return validator.isMobilePhone(phone, 'any', { strictMode: false });
-};
+export const validatePhoneNumber = (phone: string): boolean =>
+  validator.isMobilePhone(phone, 'any', { strictMode: false });
 
-export const validateUUID = (uuid: string): boolean => {
-  return validator.isUUID(uuid);
-};
+export const validateUUID = (uuid: string): boolean => validator.isUUID(uuid);
 
-export const validateURL = (url: string): boolean => {
-  return validator.isURL(url, {
+export const validateURL = (url: string): boolean =>
+  validator.isURL(url, {
     protocols: ['http', 'https'],
     require_protocol: true,
     require_valid_protocol: true,
   });
-};
 
 export const validateJSON = (json: string): boolean => {
   try {

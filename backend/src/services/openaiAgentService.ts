@@ -1,9 +1,9 @@
-import { Agent, tool, Runner, run } from '@openai/agents';
+import { Agent, tool, run } from '@openai/agents';
 import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
 import { supabaseAdmin } from '../config/supabase';
 import { stripeService } from './stripeService';
 import Logger from '../utils/logger';
-import { v4 as uuidv4 } from 'uuid';
 
 const logger = Logger;
 
@@ -53,9 +53,12 @@ export interface AgentTrace {
 }
 
 export class OpenAIAgentService {
-  private agents: Map<string, Agent> = new Map();
+  private agents: Map<string, Agent<any, 'text'>> = new Map();
+
   private tools: Map<string, any> = new Map();
+
   private traces: AgentTrace[] = [];
+
   private context: AgentContext;
 
   constructor(context: AgentContext) {
@@ -69,14 +72,16 @@ export class OpenAIAgentService {
       name: 'create_order',
       description: 'Create a new customer order with items and calculate total',
       parameters: z.object({
-        items: z.array(z.object({
-          name: z.string().describe('Item name'),
-          quantity: z.number().describe('Quantity ordered'),
-          price: z.number().describe('Price per item'),
-        })),
+        items: z.array(
+          z.object({
+            name: z.string().describe('Item name'),
+            quantity: z.number().describe('Quantity ordered'),
+            price: z.number().describe('Price per item'),
+          })
+        ),
         total: z.number().describe('Total amount for the order'),
-        customerName: z.string().optional().describe('Customer name'),
-        notes: z.string().optional().describe('Order notes'),
+        customerName: z.string().nullable().describe('Customer name'),
+        notes: z.string().nullable().describe('Order notes'),
       }),
       execute: async (input) => this.createOrder(input),
     });
@@ -88,8 +93,8 @@ export class OpenAIAgentService {
       description: 'Process a payment for an order using Stripe',
       parameters: z.object({
         amount: z.number().describe('Payment amount in dollars'),
-        orderId: z.string().optional().describe('Order ID to associate with payment'),
-        paymentMethod: z.string().optional().default('card').describe('Payment method'),
+        orderId: z.string().nullable().describe('Order ID to associate with payment'),
+        paymentMethod: z.string().nullable().default('card').describe('Payment method'),
       }),
       execute: async (input) => this.processPayment(input),
     });
@@ -100,7 +105,7 @@ export class OpenAIAgentService {
       name: 'get_business_info',
       description: 'Get information about the business including hours, menu, and services',
       parameters: z.object({
-        infoType: z.enum(['general', 'hours', 'menu', 'services']).optional(),
+        infoType: z.enum(['general', 'hours', 'menu', 'services']).nullable(),
       }),
       execute: async (input) => this.getBusinessInfo(input),
     });
@@ -112,8 +117,8 @@ export class OpenAIAgentService {
       description: 'Check if the business is available on a specific date and time',
       parameters: z.object({
         date: z.string().describe('Date to check (YYYY-MM-DD format)'),
-        time: z.string().optional().describe('Time to check (HH:MM format)'),
-        service: z.string().optional().describe('Service to check availability for'),
+        time: z.string().nullable().describe('Time to check (HH:MM format)'),
+        service: z.string().nullable().describe('Service to check availability for'),
       }),
       execute: async (input) => this.checkAvailability(input),
     });
@@ -128,8 +133,8 @@ export class OpenAIAgentService {
         time: z.string().describe('Appointment time (HH:MM)'),
         service: z.string().describe('Service or reason for appointment'),
         customerName: z.string().describe('Customer name'),
-        customerPhone: z.string().optional().describe('Customer phone'),
-        notes: z.string().optional().describe('Additional notes'),
+        customerPhone: z.string().nullable().describe('Customer phone'),
+        notes: z.string().nullable().describe('Additional notes'),
       }),
       execute: async (input) => this.scheduleAppointment(input),
     });
@@ -141,7 +146,7 @@ export class OpenAIAgentService {
       description: 'Retrieve customer information and order history',
       parameters: z.object({
         customerPhone: z.string().describe('Customer phone number'),
-        dataType: z.enum(['profile', 'orders', 'appointments']).optional(),
+        dataType: z.enum(['profile', 'orders', 'appointments']).nullable(),
       }),
       execute: async (input) => this.getCustomerData(input),
     });
@@ -160,11 +165,12 @@ export class OpenAIAgentService {
     this.tools.set('track_token_usage', trackTokenUsageTool);
   }
 
-  async createAgentFromDatabase(agentId: string): Promise<Agent | null> {
+  async createAgentFromDatabase(agentId: string): Promise<Agent | undefined> {
     try {
       const { data: agentData, error } = await supabaseAdmin
         .from('agents')
-        .select(`
+        .select(
+          `
           *,
           agent_tool_assignments (
             tool_id,
@@ -178,13 +184,14 @@ export class OpenAIAgentService {
             guardrail_id,
             agent_guardrails (*)
           )
-        `)
+        `
+        )
         .eq('id', agentId)
         .single();
 
       if (error || !agentData) {
         logger.error('Failed to fetch agent from database', { error, agentId });
-        return null;
+        return undefined;
       }
 
       // Build tools array
@@ -230,12 +237,14 @@ export class OpenAIAgentService {
     const { id, name, instructions, model, tools = [], handoffs = [] } = config;
 
     // Get tools for this agent
-    const agentTools = tools.map(toolName => {
-      if (this.tools.has(toolName)) {
-        return this.tools.get(toolName);
-      }
-      return null;
-    }).filter(Boolean);
+    const agentTools = tools
+      .map((toolName) => {
+        if (this.tools.has(toolName)) {
+          return this.tools.get(toolName);
+        }
+        return null;
+      })
+      .filter(Boolean);
 
     // Create the agent
     const agent = new Agent({
@@ -250,11 +259,7 @@ export class OpenAIAgentService {
     return agent;
   }
 
-  async runAgent(
-    agentId: string,
-    message: string,
-    options?: any
-  ): Promise<any> {
+  async runAgent(agentId: string, message: string, options?: any): Promise<any> {
     const startTime = Date.now();
     const traceId = uuidv4();
 
@@ -262,7 +267,7 @@ export class OpenAIAgentService {
       let agent = this.agents.get(agentId);
       if (!agent) {
         agent = await this.createAgentFromDatabase(agentId);
-        if (!agent) {
+        if (agent === undefined) {
           throw new Error(`Agent ${agentId} not found`);
         }
       }
@@ -280,8 +285,8 @@ export class OpenAIAgentService {
         },
       };
 
-      // Run the agent
-      const result = await run(agent, message, {
+      // Run the agent (we already checked agent is not null above)
+      const result = await run(agent as Agent, message, {
         ...options,
         maxIterations: options?.maxIterations || 10,
       });
@@ -316,15 +321,11 @@ export class OpenAIAgentService {
     }
   }
 
-  async streamAgent(
-    agentId: string,
-    message: string,
-    options?: any
-  ): Promise<AsyncIterable<any>> {
+  async streamAgent(agentId: string, message: string, options?: any): Promise<AsyncIterable<any>> {
     let agent = this.agents.get(agentId);
     if (!agent) {
       agent = await this.createAgentFromDatabase(agentId);
-      if (!agent) {
+      if (agent === undefined) {
         throw new Error(`Agent ${agentId} not found`);
       }
     }
@@ -332,7 +333,7 @@ export class OpenAIAgentService {
     // Note: Streaming may need to be implemented differently
     // For now, return a simple async generator
     async function* generator() {
-      const result = await run(agent, message, options);
+      const result = await run(agent!, message, options);
       yield result;
     }
     return generator();
@@ -357,11 +358,7 @@ export class OpenAIAgentService {
         },
       };
 
-      const { data: order, error } = await supabaseAdmin
-        .from('orders')
-        .insert(orderData)
-        .select()
-        .single();
+      const { data: order, error } = await supabaseAdmin.from('orders').insert(orderData).select().single();
 
       if (error) throw error;
 
@@ -412,11 +409,7 @@ export class OpenAIAgentService {
         },
       };
 
-      const { data: payment, error } = await supabaseAdmin
-        .from('payments')
-        .insert(paymentData)
-        .select()
-        .single();
+      const { data: payment, error } = await supabaseAdmin.from('payments').insert(paymentData).select().single();
 
       if (error) {
         logger.error('Failed to record payment', { error });
@@ -443,9 +436,8 @@ export class OpenAIAgentService {
         success: charge.status === 'succeeded',
         paymentId: payment?.id,
         chargeId: charge.id,
-        message: charge.status === 'succeeded'
-          ? `Payment of $${input.amount} processed successfully`
-          : 'Payment failed',
+        message:
+          charge.status === 'succeeded' ? `Payment of $${input.amount} processed successfully` : 'Payment failed',
         receiptUrl: charge.receipt_url,
       };
     } catch (error) {
@@ -502,9 +494,7 @@ export class OpenAIAgentService {
       if (error) throw error;
 
       const hours = business.data_json?.hours || {};
-      const dayOfWeek = new Date(input.date)
-        .toLocaleDateString('en-US', { weekday: 'short' })
-        .toLowerCase();
+      const dayOfWeek = new Date(input.date).toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase();
       const dayHours = hours[dayOfWeek];
 
       if (!dayHours) {
@@ -561,11 +551,7 @@ export class OpenAIAgentService {
         },
       };
 
-      const { data: appointment, error } = await supabaseAdmin
-        .from('orders')
-        .insert(appointmentData)
-        .select()
-        .single();
+      const { data: appointment, error } = await supabaseAdmin.from('orders').insert(appointmentData).select().single();
 
       if (error) throw error;
 
@@ -656,21 +642,19 @@ export class OpenAIAgentService {
 
   private async saveTrace(trace: AgentTrace): Promise<void> {
     try {
-      await supabaseAdmin
-        .from('agent_traces')
-        .insert({
-          id: trace.id,
-          business_id: this.context.businessId,
-          session_id: this.context.sessionId,
-          agent_id: trace.agentId,
-          trace_type: trace.type,
-          input_data: trace.input,
-          output_data: trace.output,
-          error_data: trace.error,
-          duration_ms: trace.duration,
-          token_usage: trace.tokenUsage,
-          metadata: trace.metadata,
-        });
+      await supabaseAdmin.from('agent_traces').insert({
+        id: trace.id,
+        business_id: this.context.businessId,
+        session_id: this.context.sessionId,
+        agent_id: trace.agentId,
+        trace_type: trace.type,
+        input_data: trace.input,
+        output_data: trace.output,
+        error_data: trace.error,
+        duration_ms: trace.duration,
+        token_usage: trace.tokenUsage,
+        metadata: trace.metadata,
+      });
     } catch (error) {
       logger.error('Failed to save trace', { error, trace });
     }
@@ -679,16 +663,14 @@ export class OpenAIAgentService {
   // Session management
   async saveSession(sessionKey: string, state: any): Promise<void> {
     try {
-      await supabaseAdmin
-        .from('agent_sessions')
-        .upsert({
-          business_id: this.context.businessId,
-          session_key: sessionKey,
-          customer_identifier: this.context.customerId,
-          conversation_state: state,
-          metadata: this.context.metadata,
-          updated_at: new Date().toISOString(),
-        });
+      await supabaseAdmin.from('agent_sessions').upsert({
+        business_id: this.context.businessId,
+        session_key: sessionKey,
+        customer_identifier: this.context.customerId,
+        conversation_state: state,
+        metadata: this.context.metadata,
+        updated_at: new Date().toISOString(),
+      });
     } catch (error) {
       logger.error('Failed to save session', { error, sessionKey });
     }

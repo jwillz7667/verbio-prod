@@ -40,9 +40,9 @@ CREATE TABLE IF NOT EXISTS agent_tools (
     UNIQUE(business_id, name)
 );
 
-CREATE INDEX idx_agent_tools_business_id ON agent_tools(business_id);
-CREATE INDEX idx_agent_tools_category ON agent_tools(category);
-CREATE INDEX idx_agent_tools_is_active ON agent_tools(is_active);
+CREATE INDEX IF NOT EXISTS idx_agent_tools_business_id ON agent_tools(business_id);
+CREATE INDEX IF NOT EXISTS idx_agent_tools_category ON agent_tools(category);
+CREATE INDEX IF NOT EXISTS idx_agent_tools_is_active ON agent_tools(is_active);
 
 -- Create agent_tool_assignments table for many-to-many relationship
 CREATE TABLE IF NOT EXISTS agent_tool_assignments (
@@ -55,8 +55,8 @@ CREATE TABLE IF NOT EXISTS agent_tool_assignments (
     UNIQUE(agent_id, tool_id)
 );
 
-CREATE INDEX idx_tool_assignments_agent_id ON agent_tool_assignments(agent_id);
-CREATE INDEX idx_tool_assignments_tool_id ON agent_tool_assignments(tool_id);
+CREATE INDEX IF NOT EXISTS idx_tool_assignments_agent_id ON agent_tool_assignments(agent_id);
+CREATE INDEX IF NOT EXISTS idx_tool_assignments_tool_id ON agent_tool_assignments(tool_id);
 
 -- Create agent_handoffs table for managing handoff relationships
 CREATE TABLE IF NOT EXISTS agent_handoffs (
@@ -70,8 +70,8 @@ CREATE TABLE IF NOT EXISTS agent_handoffs (
     UNIQUE(from_agent_id, to_agent_id)
 );
 
-CREATE INDEX idx_handoffs_from_agent ON agent_handoffs(from_agent_id);
-CREATE INDEX idx_handoffs_to_agent ON agent_handoffs(to_agent_id);
+CREATE INDEX IF NOT EXISTS idx_handoffs_from_agent ON agent_handoffs(from_agent_id);
+CREATE INDEX IF NOT EXISTS idx_handoffs_to_agent ON agent_handoffs(to_agent_id);
 
 -- Create agent_guardrails table
 CREATE TABLE IF NOT EXISTS agent_guardrails (
@@ -87,8 +87,8 @@ CREATE TABLE IF NOT EXISTS agent_guardrails (
     updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
-CREATE INDEX idx_guardrails_business_id ON agent_guardrails(business_id);
-CREATE INDEX idx_guardrails_type ON agent_guardrails(type);
+CREATE INDEX IF NOT EXISTS idx_guardrails_business_id ON agent_guardrails(business_id);
+CREATE INDEX IF NOT EXISTS idx_guardrails_type ON agent_guardrails(type);
 
 -- Create agent_guardrail_assignments table
 CREATE TABLE IF NOT EXISTS agent_guardrail_assignments (
@@ -100,8 +100,8 @@ CREATE TABLE IF NOT EXISTS agent_guardrail_assignments (
     UNIQUE(agent_id, guardrail_id)
 );
 
-CREATE INDEX idx_guardrail_assignments_agent_id ON agent_guardrail_assignments(agent_id);
-CREATE INDEX idx_guardrail_assignments_guardrail_id ON agent_guardrail_assignments(guardrail_id);
+CREATE INDEX IF NOT EXISTS idx_guardrail_assignments_agent_id ON agent_guardrail_assignments(agent_id);
+CREATE INDEX IF NOT EXISTS idx_guardrail_assignments_guardrail_id ON agent_guardrail_assignments(guardrail_id);
 
 -- Create agent_sessions table for conversation persistence
 CREATE TABLE IF NOT EXISTS agent_sessions (
@@ -117,10 +117,10 @@ CREATE TABLE IF NOT EXISTS agent_sessions (
     updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
-CREATE INDEX idx_agent_sessions_business_id ON agent_sessions(business_id);
-CREATE INDEX idx_agent_sessions_session_key ON agent_sessions(session_key);
-CREATE INDEX idx_agent_sessions_customer ON agent_sessions(customer_identifier);
-CREATE INDEX idx_agent_sessions_expires ON agent_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_agent_sessions_business_id ON agent_sessions(business_id);
+CREATE INDEX IF NOT EXISTS idx_agent_sessions_session_key ON agent_sessions(session_key);
+CREATE INDEX IF NOT EXISTS idx_agent_sessions_customer ON agent_sessions(customer_identifier);
+CREATE INDEX IF NOT EXISTS idx_agent_sessions_expires ON agent_sessions(expires_at);
 
 -- Create agent_traces table for debugging and analytics
 CREATE TABLE IF NOT EXISTS agent_traces (
@@ -139,12 +139,12 @@ CREATE TABLE IF NOT EXISTS agent_traces (
     created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
 );
 
-CREATE INDEX idx_traces_business_id ON agent_traces(business_id);
-CREATE INDEX idx_traces_session_id ON agent_traces(session_id);
-CREATE INDEX idx_traces_agent_id ON agent_traces(agent_id);
-CREATE INDEX idx_traces_type ON agent_traces(trace_type);
-CREATE INDEX idx_traces_parent_id ON agent_traces(parent_trace_id);
-CREATE INDEX idx_traces_created_at ON agent_traces(created_at);
+CREATE INDEX IF NOT EXISTS idx_traces_business_id ON agent_traces(business_id);
+CREATE INDEX IF NOT EXISTS idx_traces_session_id ON agent_traces(session_id);
+CREATE INDEX IF NOT EXISTS idx_traces_agent_id ON agent_traces(agent_id);
+CREATE INDEX IF NOT EXISTS idx_traces_type ON agent_traces(trace_type);
+CREATE INDEX IF NOT EXISTS idx_traces_parent_id ON agent_traces(parent_trace_id);
+CREATE INDEX IF NOT EXISTS idx_traces_created_at ON agent_traces(created_at);
 
 -- Add default built-in tools for existing businesses
 INSERT INTO agent_tools (business_id, name, description, category, parameters_schema, implementation_type)
@@ -190,12 +190,15 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
+DROP TRIGGER IF EXISTS update_agent_tools_updated_at ON agent_tools;
 CREATE TRIGGER update_agent_tools_updated_at BEFORE UPDATE ON agent_tools
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_agent_guardrails_updated_at ON agent_guardrails;
 CREATE TRIGGER update_agent_guardrails_updated_at BEFORE UPDATE ON agent_guardrails
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_agent_sessions_updated_at ON agent_sessions;
 CREATE TRIGGER update_agent_sessions_updated_at BEFORE UPDATE ON agent_sessions
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
@@ -209,12 +212,14 @@ ALTER TABLE agent_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_traces ENABLE ROW LEVEL SECURITY;
 
 -- Create RLS policies (assuming similar pattern as existing tables)
+DROP POLICY IF EXISTS "Business users can manage their agent tools" ON agent_tools;
 CREATE POLICY "Business users can manage their agent tools"
     ON agent_tools FOR ALL
     USING (business_id IN (
         SELECT business_id FROM users WHERE id = auth.uid()
     ));
 
+DROP POLICY IF EXISTS "Business users can manage tool assignments" ON agent_tool_assignments;
 CREATE POLICY "Business users can manage tool assignments"
     ON agent_tool_assignments FOR ALL
     USING (agent_id IN (
@@ -223,6 +228,7 @@ CREATE POLICY "Business users can manage tool assignments"
         )
     ));
 
+DROP POLICY IF EXISTS "Business users can manage handoffs" ON agent_handoffs;
 CREATE POLICY "Business users can manage handoffs"
     ON agent_handoffs FOR ALL
     USING (from_agent_id IN (
@@ -231,12 +237,14 @@ CREATE POLICY "Business users can manage handoffs"
         )
     ));
 
+DROP POLICY IF EXISTS "Business users can manage guardrails" ON agent_guardrails;
 CREATE POLICY "Business users can manage guardrails"
     ON agent_guardrails FOR ALL
     USING (business_id IN (
         SELECT business_id FROM users WHERE id = auth.uid()
     ));
 
+DROP POLICY IF EXISTS "Business users can manage guardrail assignments" ON agent_guardrail_assignments;
 CREATE POLICY "Business users can manage guardrail assignments"
     ON agent_guardrail_assignments FOR ALL
     USING (agent_id IN (
@@ -245,12 +253,14 @@ CREATE POLICY "Business users can manage guardrail assignments"
         )
     ));
 
+DROP POLICY IF EXISTS "Business users can manage sessions" ON agent_sessions;
 CREATE POLICY "Business users can manage sessions"
     ON agent_sessions FOR ALL
     USING (business_id IN (
         SELECT business_id FROM users WHERE id = auth.uid()
     ));
 
+DROP POLICY IF EXISTS "Business users can view traces" ON agent_traces;
 CREATE POLICY "Business users can view traces"
     ON agent_traces FOR SELECT
     USING (business_id IN (

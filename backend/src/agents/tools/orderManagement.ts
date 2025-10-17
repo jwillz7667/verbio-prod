@@ -1,8 +1,8 @@
 import { tool } from '@openai/agents';
 import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
 import { supabaseAdmin } from '../../config/supabase';
 import Logger from '../../utils/logger';
-import { v4 as uuidv4 } from 'uuid';
 
 const logger = Logger;
 
@@ -10,7 +10,7 @@ const OrderItemSchema = z.object({
   name: z.string().describe('Item name'),
   quantity: z.number().min(1).describe('Quantity ordered'),
   price: z.number().min(0).describe('Price per item'),
-  notes: z.string().optional().describe('Special instructions'),
+  notes: z.string().nullable().describe('Special instructions'),
 });
 
 export class OrderManagementTool {
@@ -19,16 +19,16 @@ export class OrderManagementTool {
     description: 'Create a new customer order with items and calculate total',
     parameters: z.object({
       items: z.array(OrderItemSchema).describe('List of items in the order'),
-      customerName: z.string().optional().describe('Customer name'),
-      customerPhone: z.string().optional().describe('Customer phone number'),
-      deliveryAddress: z.string().optional().describe('Delivery address'),
+      customerName: z.string().nullable().describe('Customer name'),
+      customerPhone: z.string().nullable().describe('Customer phone number'),
+      deliveryAddress: z.string().nullable().describe('Delivery address'),
       orderType: z.enum(['dine-in', 'takeout', 'delivery']).default('takeout'),
-      scheduledTime: z.string().optional().describe('Scheduled pickup/delivery time'),
-      notes: z.string().optional().describe('Order notes or special instructions'),
+      scheduledTime: z.string().nullable().describe('Scheduled pickup/delivery time'),
+      notes: z.string().nullable().describe('Order notes or special instructions'),
     }),
     execute: async (input, context: any) => {
       try {
-        const total = input.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const total = input.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
         const orderData = {
           id: uuidv4(),
@@ -49,11 +49,7 @@ export class OrderManagementTool {
           },
         };
 
-        const { data: order, error } = await supabaseAdmin
-          .from('orders')
-          .insert(orderData)
-          .select()
-          .single();
+        const { data: order, error } = await supabaseAdmin.from('orders').insert(orderData).select().single();
 
         if (error) throw error;
 
@@ -85,9 +81,9 @@ export class OrderManagementTool {
     description: 'Update an existing order (add/remove items, change details)',
     parameters: z.object({
       orderId: z.string().describe('Order ID to update'),
-      items: z.array(OrderItemSchema).optional().describe('Updated items list'),
-      status: z.enum(['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled']).optional(),
-      notes: z.string().optional().describe('Additional notes'),
+      items: z.array(OrderItemSchema).nullable().describe('Updated items list'),
+      status: z.enum(['pending', 'confirmed', 'preparing', 'ready', 'delivered', 'cancelled']).nullable(),
+      notes: z.string().nullable().describe('Additional notes'),
     }),
     execute: async (input, context: any) => {
       try {
@@ -110,7 +106,7 @@ export class OrderManagementTool {
         };
 
         if (input.items) {
-          const total = input.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+          const total = input.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
           updateData.items = input.items;
           updateData.total = total;
         }
@@ -162,7 +158,7 @@ export class OrderManagementTool {
     description: 'Cancel an existing order',
     parameters: z.object({
       orderId: z.string().describe('Order ID to cancel'),
-      reason: z.string().optional().describe('Cancellation reason'),
+      reason: z.string().nullable().describe('Cancellation reason'),
       refund: z.boolean().default(false).describe('Whether to process refund'),
     }),
     execute: async (input, context: any) => {
@@ -239,7 +235,8 @@ export class OrderManagementTool {
       try {
         const { data: order, error } = await supabaseAdmin
           .from('orders')
-          .select(`
+          .select(
+            `
             *,
             payments (
               id,
@@ -247,7 +244,8 @@ export class OrderManagementTool {
               status,
               created_at
             )
-          `)
+          `
+          )
           .eq('id', input.orderId)
           .eq('business_id', context.businessId)
           .single();
@@ -259,11 +257,15 @@ export class OrderManagementTool {
           };
         }
 
-        const estimatedTime = order.metadata?.scheduled_time ||
-          (order.status === 'preparing' ? '10-15 minutes' :
-           order.status === 'ready' ? 'Ready for pickup' :
-           order.status === 'delivered' ? 'Delivered' :
-           '20-30 minutes');
+        const estimatedTime =
+          order.metadata?.scheduled_time ||
+          (order.status === 'preparing'
+            ? '10-15 minutes'
+            : order.status === 'ready'
+              ? 'Ready for pickup'
+              : order.status === 'delivered'
+                ? 'Delivered'
+                : '20-30 minutes');
 
         logger.info('Order status retrieved', {
           orderId: input.orderId,

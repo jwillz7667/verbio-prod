@@ -18,6 +18,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 import clsx from 'clsx';
+import { useIsMobile } from '../../hooks/useBreakpoint';
+import BackendStatusIndicator from '../BackendStatusIndicator';
 
 interface TopBarProps {
   onMenuClick?: () => void;
@@ -29,6 +31,7 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick, showMenuButton = false }) 
   const [showSearch, setShowSearch] = useState(false);
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
 
   const handleLogout = async () => {
     try {
@@ -52,20 +55,24 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick, showMenuButton = false }) 
     <header className="sticky top-0 z-30 h-16 bg-white border-b border-gray-200 shadow-sm">
       <div className="h-full flex items-center justify-between px-4 lg:px-6">
         {/* Left Section */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           {showMenuButton && (
-            <button onClick={onMenuClick} className="lg:hidden p-2 rounded-lg hover:bg-gray-100 transition-colors">
+            <button
+              onClick={onMenuClick}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors lg:hidden"
+              aria-label="Open menu"
+            >
               <MenuIcon className="w-5 h-5 text-gray-600" />
             </button>
           )}
 
-          {/* Search Bar */}
-          <div className="relative">
+          {/* Search Bar - Desktop */}
+          <div className="relative hidden sm:block">
             <AnimatePresence>
               {showSearch ? (
                 <motion.div
                   initial={{ width: 0, opacity: 0 }}
-                  animate={{ width: 320, opacity: 1 }}
+                  animate={{ width: isMobile ? 200 : 320, opacity: 1 }}
                   exit={{ width: 0, opacity: 0 }}
                   transition={{ duration: 0.3 }}
                   className="flex items-center"
@@ -95,38 +102,51 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick, showMenuButton = false }) 
                 <button
                   onClick={() => setShowSearch(true)}
                   className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                  aria-label="Search"
                 >
                   <Search className="w-5 h-5 text-gray-600" />
                 </button>
               )}
             </AnimatePresence>
           </div>
+
+          {/* Mobile Search Button */}
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            className="p-2 rounded-lg hover:bg-gray-100 transition-colors sm:hidden"
+            aria-label="Search"
+          >
+            <Search className="w-5 h-5 text-gray-600" />
+          </button>
         </div>
 
         {/* Right Section */}
-        <div className="flex items-center gap-3">
-          {/* Upgrade Button */}
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Backend Status Indicator */}
+          <BackendStatusIndicator />
+
+          {/* Upgrade Button - Hidden on mobile */}
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             onClick={() => navigate('/pricing')}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-lg hover:shadow-lg transition-all duration-200"
+            className="hidden md:flex items-center gap-2 px-3 sm:px-4 py-2 bg-gradient-to-r from-primary-500 to-primary-600 text-white rounded-lg hover:shadow-lg transition-all duration-200"
           >
             <Sparkles className="w-4 h-4" />
             <span className="text-sm font-medium">Upgrade</span>
           </motion.button>
 
-          {/* Credits Display */}
-          <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-primary-50 rounded-lg">
-            <CreditCard className="w-4 h-4 text-primary-600" />
-            <span className="text-sm font-medium text-primary-700">2,400 credits</span>
+          {/* Credits Display - Hidden on small mobile */}
+          <div className="hidden sm:flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 bg-primary-50 rounded-lg">
+            <CreditCard className="w-3 h-3 sm:w-4 sm:h-4 text-primary-600" />
+            <span className="text-xs sm:text-sm font-medium text-primary-700">2,400</span>
           </div>
 
           {/* Notifications */}
           <Menu as="div" className="relative">
             <Menu.Button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
               <Bell className="w-5 h-5 text-gray-600" />
-              {unreadCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
+              {unreadCount > 0 && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />}
             </Menu.Button>
 
             <Transition
@@ -138,12 +158,12 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick, showMenuButton = false }) 
               leaveFrom="transform opacity-100 scale-100"
               leaveTo="transform opacity-0 scale-95"
             >
-              <Menu.Items className="absolute right-0 mt-2 w-80 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+              <Menu.Items className="absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-200">
                   <h3 className="text-sm font-semibold text-gray-900">Notifications</h3>
                 </div>
 
-                <div className="max-h-96 overflow-y-auto">
+                <div className="max-h-64 sm:max-h-96 overflow-y-auto">
                   {notifications.map((notification) => (
                     <Menu.Item key={notification.id}>
                       {({ active }) => (
@@ -158,9 +178,7 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick, showMenuButton = false }) 
                               <p className="text-sm font-medium text-gray-900">{notification.title}</p>
                               <p className="text-xs text-gray-500 mt-1">{notification.time}</p>
                             </div>
-                            {notification.unread && (
-                              <span className="w-2 h-2 bg-primary-500 rounded-full mt-1.5"></span>
-                            )}
+                            {notification.unread && <span className="w-2 h-2 bg-primary-500 rounded-full mt-1.5" />}
                           </div>
                         </button>
                       )}
@@ -179,11 +197,13 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick, showMenuButton = false }) 
 
           {/* User Menu */}
           <Menu as="div" className="relative">
-            <Menu.Button className="flex items-center gap-2 p-2 rounded-lg hover:bg-gray-100 transition-colors">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-r from-primary-500 to-primary-600 flex items-center justify-center">
-                <span className="text-white text-sm font-bold">{user?.email?.charAt(0).toUpperCase() || 'U'}</span>
+            <Menu.Button className="flex items-center gap-1 sm:gap-2 p-1.5 sm:p-2 rounded-lg hover:bg-gray-100 transition-colors">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-r from-primary-500 to-primary-600 flex items-center justify-center">
+                <span className="text-white text-xs sm:text-sm font-bold">
+                  {user?.email?.charAt(0).toUpperCase() || 'U'}
+                </span>
               </div>
-              <ChevronDown className="w-4 h-4 text-gray-600" />
+              <ChevronDown className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 hidden sm:block" />
             </Menu.Button>
 
             <Transition
@@ -200,6 +220,39 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick, showMenuButton = false }) 
                   <p className="text-sm font-medium text-gray-900">{user?.businessName || 'Business'}</p>
                   <p className="text-xs text-gray-500 truncate">{user?.email}</p>
                 </div>
+
+                {/* Mobile-only menu items */}
+                {isMobile && (
+                  <div className="py-1 border-b border-gray-200 sm:hidden">
+                    <Menu.Item>
+                      {({ active }) => (
+                        <button
+                          onClick={() => navigate('/dashboard/billing')}
+                          className={clsx('w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700', {
+                            'bg-gray-50': active,
+                          })}
+                        >
+                          <CreditCard className="w-4 h-4" />
+                          <span>Credits: 2,400</span>
+                        </button>
+                      )}
+                    </Menu.Item>
+
+                    <Menu.Item>
+                      {({ active }) => (
+                        <button
+                          onClick={() => navigate('/pricing')}
+                          className={clsx('w-full flex items-center gap-2 px-4 py-2 text-sm text-primary-600', {
+                            'bg-primary-50': active,
+                          })}
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          Upgrade Plan
+                        </button>
+                      )}
+                    </Menu.Item>
+                  </div>
+                )}
 
                 <div className="py-1">
                   <Menu.Item>
@@ -251,6 +304,40 @@ const TopBar: React.FC<TopBarProps> = ({ onMenuClick, showMenuButton = false }) 
           </Menu>
         </div>
       </div>
+
+      {/* Mobile Search Bar */}
+      <AnimatePresence>
+        {showSearch && isMobile && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="border-t border-gray-200 px-4 py-2 sm:hidden"
+          >
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search..."
+                className="w-full pl-10 pr-10 py-2 bg-gray-50 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-sm"
+                autoFocus
+              />
+              <button
+                onClick={() => {
+                  setShowSearch(false);
+                  setSearchQuery('');
+                }}
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+              >
+                <X className="w-4 h-4 text-gray-400 hover:text-gray-600" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 };

@@ -1,9 +1,9 @@
 import { tool } from '@openai/agents';
 import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
 import { stripeService } from '../../services/stripeService';
 import { supabaseAdmin } from '../../config/supabase';
 import Logger from '../../utils/logger';
-import { v4 as uuidv4 } from 'uuid';
 
 const logger = Logger;
 
@@ -13,10 +13,10 @@ export class PaymentProcessingTool {
     description: 'Process a payment for an order using Stripe',
     parameters: z.object({
       amount: z.number().positive().describe('Payment amount in dollars'),
-      orderId: z.string().optional().describe('Order ID to associate with payment'),
+      orderId: z.string().nullable().describe('Order ID to associate with payment'),
       paymentMethod: z.enum(['card', 'cash', 'digital_wallet']).default('card'),
-      cardLast4: z.string().optional().describe('Last 4 digits of card'),
-      tip: z.number().optional().default(0).describe('Tip amount'),
+      cardLast4: z.string().nullable().describe('Last 4 digits of card'),
+      tip: z.number().nullable().default(0).describe('Tip amount'),
     }),
     execute: async (input, context: any) => {
       try {
@@ -52,11 +52,7 @@ export class PaymentProcessingTool {
           },
         };
 
-        const { data: payment, error } = await supabaseAdmin
-          .from('payments')
-          .insert(paymentData)
-          .select()
-          .single();
+        const { data: payment, error } = await supabaseAdmin.from('payments').insert(paymentData).select().single();
 
         if (error) {
           logger.error('Failed to record payment', { error });
@@ -87,9 +83,10 @@ export class PaymentProcessingTool {
           amount: totalAmount,
           tip: input.tip,
           receiptUrl: charge.receipt_url,
-          message: charge.status === 'succeeded'
-            ? `Payment of $${totalAmount.toFixed(2)} processed successfully`
-            : 'Payment failed. Please try another payment method.',
+          message:
+            charge.status === 'succeeded'
+              ? `Payment of $${totalAmount.toFixed(2)} processed successfully`
+              : 'Payment failed. Please try another payment method.',
         };
       } catch (error) {
         logger.error('Failed to process payment', { error, input });
@@ -106,8 +103,8 @@ export class PaymentProcessingTool {
     description: 'Process a refund for a previous payment',
     parameters: z.object({
       paymentId: z.string().describe('Payment ID to refund'),
-      amount: z.number().optional().describe('Partial refund amount (full if not specified)'),
-      reason: z.string().optional().describe('Refund reason'),
+      amount: z.number().nullable().describe('Partial refund amount (full if not specified)'),
+      reason: z.string().nullable().describe('Refund reason'),
     }),
     execute: async (input, context: any) => {
       try {
@@ -137,10 +134,7 @@ export class PaymentProcessingTool {
         const refundAmountCents = Math.round(refundAmount * 100);
 
         // Process refund through Stripe
-        const refund = await stripeService.refundCharge(
-          payment.stripe_payment_id,
-          refundAmountCents
-        );
+        const refund = await stripeService.refundCharge(payment.stripe_payment_id, refundAmountCents);
 
         // Update payment record
         const { error: updateError } = await supabaseAdmin
@@ -188,8 +182,8 @@ export class PaymentProcessingTool {
     name: 'get_payment_status',
     description: 'Get the status of a payment',
     parameters: z.object({
-      paymentId: z.string().optional().describe('Payment ID'),
-      orderId: z.string().optional().describe('Order ID'),
+      paymentId: z.string().nullable().describe('Payment ID'),
+      orderId: z.string().nullable().describe('Order ID'),
     }),
     execute: async (input, context: any) => {
       try {
@@ -200,10 +194,7 @@ export class PaymentProcessingTool {
           };
         }
 
-        let query = supabaseAdmin
-          .from('payments')
-          .select('*')
-          .eq('business_id', context.businessId);
+        let query = supabaseAdmin.from('payments').select('*').eq('business_id', context.businessId);
 
         if (input.paymentId) {
           query = query.eq('id', input.paymentId);

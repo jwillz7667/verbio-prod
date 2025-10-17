@@ -1,12 +1,12 @@
 import { Server as HTTPServer } from 'http';
 import { WebSocket, WebSocketServer } from 'ws';
 import { URL } from 'url';
+import * as ffmpeg from 'fluent-ffmpeg';
+import { PassThrough } from 'stream';
 import { supabaseAdmin as supabase } from '../config/supabase';
 import { logger } from '../utils/logger';
 import { OpenAIRealtimeService } from '../services/openaiRealtimeService';
 // import { TwilioService } from '../services/twilioService';
-import * as ffmpeg from 'fluent-ffmpeg';
-import { PassThrough } from 'stream';
 
 interface SessionConfig {
   model: string;
@@ -18,14 +18,10 @@ interface SessionConfig {
   };
   turnDetection: {
     type: 'server_vad' | 'semantic_vad' | 'none';
-    serverVad?: {
-      threshold: number;
-      prefixPaddingMs: number;
-      silenceDurationMs: number;
-    };
-    semanticVad?: {
-      eagerness: 'low' | 'medium' | 'high';
-    };
+    threshold?: number;
+    prefixPaddingMs?: number;
+    silenceDurationMs?: number;
+    createResponse?: boolean;
   };
   tools?: Array<{
     type: string;
@@ -33,15 +29,11 @@ interface SessionConfig {
     description: string;
     parameters: Record<string, any>;
   }>;
-  temperature: number;
   maxResponseOutputTokens: number | 'inf';
   vadMode: 'server_vad' | 'semantic_vad' | 'disabled';
   modalities: string[];
-  responseModalities?: string[];
   audioFormat: 'pcm16' | 'g711_ulaw' | 'g711_alaw';
   toolChoice?: 'auto' | 'none' | 'required' | { type: 'function'; name: string };
-  parallelToolCalls?: boolean;
-  audioBufferSizeSec?: number;
   noiseReduction?: {
     enabled: boolean;
     strength: 'low' | 'medium' | 'high';
@@ -69,7 +61,7 @@ const connections = new Map<string, RealtimeConnection>();
 export function setupRealtimePlaygroundWebSocket(server: HTTPServer): void {
   const wss = new WebSocketServer({
     server,
-    path: '/ws/realtime'
+    path: '/ws/realtime',
   });
 
   wss.on('connection', async (ws: WebSocket, request) => {
@@ -79,10 +71,12 @@ export function setupRealtimePlaygroundWebSocket(server: HTTPServer): void {
     const voice = url.searchParams.get('voice') || 'alloy';
 
     if (!businessId) {
-      ws.send(JSON.stringify({
-        type: 'error',
-        error: { message: 'Missing businessId parameter' }
-      }));
+      ws.send(
+        JSON.stringify({
+          type: 'error',
+          error: { message: 'Missing businessId parameter' },
+        })
+      );
       ws.close();
       return;
     }
@@ -106,24 +100,19 @@ export function setupRealtimePlaygroundWebSocket(server: HTTPServer): void {
         instructions: '',
         inputAudioTranscription: { enabled: true, model: 'whisper-1' },
         turnDetection: {
-          type: 'server_vad',
-          serverVad: {
-            threshold: 0.5,
-            prefixPaddingMs: 300,
-            silenceDurationMs: 500
-          }
+          type: 'semantic_vad',
+          createResponse: true,
         },
-        temperature: 0.8,
         maxResponseOutputTokens: 4096,
         vadMode: 'semantic_vad',
         modalities: ['text', 'audio'],
         audioFormat: 'pcm16',
         noiseReduction: {
           enabled: true,
-          strength: 'medium'
+          strength: 'medium',
         },
-        mcpServers: []
-      }
+        mcpServers: [],
+      },
     };
 
     connections.set(sessionId, connection);
@@ -173,17 +162,19 @@ export function setupRealtimePlaygroundWebSocket(server: HTTPServer): void {
 
           default:
             // Forward unknown messages to OpenAI
-            const isConnected = (connection.openaiService as any).isConnected;
+            const { isConnected } = connection.openaiService as any;
             if (isConnected) {
               (connection.openaiService as any).send(data);
             }
         }
       } catch (error) {
         logger.error('Error handling message:', error);
-        ws.send(JSON.stringify({
-          type: 'error',
-          error: { message: 'Failed to process message' }
-        }));
+        ws.send(
+          JSON.stringify({
+            type: 'error',
+            error: { message: 'Failed to process message' },
+          })
+        );
       }
     });
 
@@ -197,11 +188,13 @@ export function setupRealtimePlaygroundWebSocket(server: HTTPServer): void {
     });
 
     // Send initial connection confirmation
-    ws.send(JSON.stringify({
-      type: 'connection.established',
-      sessionId,
-      timestamp: new Date().toISOString()
-    }));
+    ws.send(
+      JSON.stringify({
+        type: 'connection.established',
+        sessionId,
+        timestamp: new Date().toISOString(),
+      })
+    );
   });
 
   logger.info('Realtime Playground WebSocket server initialized');
@@ -213,7 +206,7 @@ async function handleSessionUpdate(connection: RealtimeConnection, session: Part
     connection.config = { ...connection.config, ...session };
 
     // Connect to OpenAI if not already connected
-    const isConnected = (connection.openaiService as any).isConnected;
+    const { isConnected } = connection.openaiService as any;
     if (!isConnected) {
       await connection.openaiService.connect(connection.config.model);
 
@@ -223,76 +216,93 @@ async function handleSessionUpdate(connection: RealtimeConnection, session: Part
         connection.ws.send(JSON.stringify(message));
 
         // Handle specific message types
-        if (message.type === 'conversation.item.created' ||
-            message.type === 'response.audio_transcript.delta' ||
-            message.type === 'response.audio.delta') {
+        if (
+          message.type === 'conversation.item.created' ||
+          message.type === 'response.audio_transcript.delta' ||
+          message.type === 'response.audio.delta'
+        ) {
           handleTranscriptionUpdate(connection, message);
         }
       });
 
       (connection.openaiService as any).on('error', (error: any) => {
         logger.error('OpenAI service error:', error);
-        connection.ws.send(JSON.stringify({
-          type: 'error',
-          error: { message: 'OpenAI service error', details: error }
-        }));
+        connection.ws.send(
+          JSON.stringify({
+            type: 'error',
+            error: { message: 'OpenAI service error', details: error },
+          })
+        );
       });
 
       (connection.openaiService as any).on('close', () => {
-        connection.ws.send(JSON.stringify({
-          type: 'session.disconnected',
-          timestamp: new Date().toISOString()
-        }));
+        connection.ws.send(
+          JSON.stringify({
+            type: 'session.disconnected',
+            timestamp: new Date().toISOString(),
+          })
+        );
       });
     }
 
-    // Send session update to OpenAI with GA best practices
+    // Send session update to OpenAI with latest API spec
     const openaiSession: any = {
       type: 'session.update',
       session: {
         modalities: connection.config.modalities,
         voice: connection.config.voice,
         instructions: connection.config.instructions,
-        input_audio_transcription: connection.config.inputAudioTranscription.enabled ? {
-          model: connection.config.inputAudioTranscription.model
-        } : undefined,
-        turn_detection: connection.config.vadMode === 'semantic_vad' ? {
-          type: 'semantic_vad',
-          eagerness: (connection.config.turnDetection as any).semanticVad?.eagerness || 'medium'
-        } : connection.config.vadMode === 'server_vad' ? {
-          type: 'server_vad',
-          threshold: connection.config.turnDetection.serverVad?.threshold || 0.5,
-          prefix_padding_ms: connection.config.turnDetection.serverVad?.prefixPaddingMs || 300,
-          silence_duration_ms: connection.config.turnDetection.serverVad?.silenceDurationMs || 500
-        } : null,
-        tools: connection.config.tools?.map(tool => ({
+        input_audio_format: connection.config.audioFormat,
+        output_audio_format: connection.config.audioFormat,
+        input_audio_transcription: connection.config.inputAudioTranscription.enabled
+          ? {
+              model: connection.config.inputAudioTranscription.model,
+            }
+          : undefined,
+        turn_detection:
+          connection.config.vadMode === 'disabled'
+            ? null
+            : {
+                type: connection.config.vadMode,
+                ...(connection.config.vadMode === 'server_vad' && {
+                  threshold: connection.config.turnDetection.threshold || 0.5,
+                  prefix_padding_ms: connection.config.turnDetection.prefixPaddingMs || 300,
+                  silence_duration_ms: connection.config.turnDetection.silenceDurationMs || 500,
+                }),
+                create_response: connection.config.turnDetection.createResponse !== false,
+              },
+        tools: connection.config.tools?.map((tool) => ({
           type: 'function',
-          name: tool.name,
-          description: tool.description,
-          parameters: tool.parameters
+          function: {
+            name: tool.name,
+            description: tool.description,
+            parameters: tool.parameters,
+          },
         })),
         tool_choice: connection.config.toolChoice || 'auto',
-        max_response_output_tokens: connection.config.maxResponseOutputTokens === 'inf' ? null : connection.config.maxResponseOutputTokens
-      }
+        max_response_output_tokens:
+          connection.config.maxResponseOutputTokens === 'inf' ? null : connection.config.maxResponseOutputTokens,
+      },
     };
-
-    // Remove audio_buffer_size_sec - not a valid OpenAI parameter
 
     (connection.openaiService as any).send(openaiSession);
 
     // Send confirmation to client
-    connection.ws.send(JSON.stringify({
-      type: 'session.updated',
-      session: connection.config,
-      timestamp: new Date().toISOString()
-    }));
-
+    connection.ws.send(
+      JSON.stringify({
+        type: 'session.updated',
+        session: connection.config,
+        timestamp: new Date().toISOString(),
+      })
+    );
   } catch (error) {
     logger.error('Error updating session:', error);
-    connection.ws.send(JSON.stringify({
-      type: 'error',
-      error: { message: 'Failed to update session' }
-    }));
+    connection.ws.send(
+      JSON.stringify({
+        type: 'error',
+        error: { message: 'Failed to update session' },
+      })
+    );
   }
 }
 
@@ -319,12 +329,14 @@ async function handleCallInitiate(connection: RealtimeConnection, data: any): Pr
     connection.phoneNumber = phoneNumber;
 
     // Send success response
-    connection.ws.send(JSON.stringify({
-      type: 'call.initiated',
-      callSid: call.sid,
-      phoneNumber,
-      timestamp: new Date().toISOString()
-    }));
+    connection.ws.send(
+      JSON.stringify({
+        type: 'call.initiated',
+        callSid: call.sid,
+        phoneNumber,
+        timestamp: new Date().toISOString(),
+      })
+    );
 
     // Log call
     await supabase.from('call_logs').insert({
@@ -334,15 +346,16 @@ async function handleCallInitiate(connection: RealtimeConnection, data: any): Pr
       direction: 'outbound',
       status: 'in-progress',
       duration: 0,
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
     });
-
   } catch (error) {
     logger.error('Error initiating call:', error);
-    connection.ws.send(JSON.stringify({
-      type: 'error',
-      error: { message: 'Failed to initiate call' }
-    }));
+    connection.ws.send(
+      JSON.stringify({
+        type: 'error',
+        error: { message: 'Failed to initiate call' },
+      })
+    );
   }
 }
 
@@ -357,22 +370,25 @@ async function handleCallEnd(connection: RealtimeConnection): Promise<void> {
         .from('call_logs')
         .update({
           status: 'completed',
-          ended_at: new Date().toISOString()
+          ended_at: new Date().toISOString(),
         })
         .eq('call_sid', connection.callSid);
     }
 
-    connection.ws.send(JSON.stringify({
-      type: 'call.ended',
-      timestamp: new Date().toISOString()
-    }));
-
+    connection.ws.send(
+      JSON.stringify({
+        type: 'call.ended',
+        timestamp: new Date().toISOString(),
+      })
+    );
   } catch (error) {
     logger.error('Error ending call:', error);
-    connection.ws.send(JSON.stringify({
-      type: 'error',
-      error: { message: 'Failed to end call' }
-    }));
+    connection.ws.send(
+      JSON.stringify({
+        type: 'error',
+        error: { message: 'Failed to end call' },
+      })
+    );
   }
 }
 
@@ -392,9 +408,8 @@ async function handleAudioAppend(connection: RealtimeConnection, audioBase64: st
     // Send to OpenAI
     (connection.openaiService as any).send({
       type: 'input_audio_buffer.append',
-      audio: processedAudio.toString('base64')
+      audio: processedAudio.toString('base64'),
     });
-
   } catch (error) {
     logger.error('Error appending audio:', error);
   }
@@ -402,33 +417,33 @@ async function handleAudioAppend(connection: RealtimeConnection, audioBase64: st
 
 async function handleAudioClear(connection: RealtimeConnection): Promise<void> {
   (connection.openaiService as any).send({
-    type: 'input_audio_buffer.clear'
+    type: 'input_audio_buffer.clear',
   });
 }
 
 async function handleAudioCommit(connection: RealtimeConnection): Promise<void> {
   (connection.openaiService as any).send({
-    type: 'input_audio_buffer.commit'
+    type: 'input_audio_buffer.commit',
   });
 }
 
 async function handleConversationItemCreate(connection: RealtimeConnection, item: any): Promise<void> {
   (connection.openaiService as any).send({
     type: 'conversation.item.create',
-    item
+    item,
   });
 }
 
 async function handleResponseCreate(connection: RealtimeConnection, data: any): Promise<void> {
   (connection.openaiService as any).send({
     type: 'response.create',
-    ...data
+    ...data,
   });
 }
 
 async function handleResponseCancel(connection: RealtimeConnection): Promise<void> {
   (connection.openaiService as any).send({
-    type: 'response.cancel'
+    type: 'response.cancel',
   });
 }
 
@@ -437,15 +452,13 @@ function handleTranscriptionUpdate(connection: RealtimeConnection, message: any)
   if (message.type === 'conversation.item.created' && message.item?.content) {
     (async () => {
       try {
-        await supabase
-          .from('call_transcripts')
-          .insert({
-            call_sid: connection.callSid || connection.sessionId,
-            business_id: connection.businessId,
-            role: message.item.role,
-            content: message.item.content[0]?.text || message.item.content[0]?.transcript || '',
-            timestamp: new Date().toISOString()
-          });
+        await supabase.from('call_transcripts').insert({
+          call_sid: connection.callSid || connection.sessionId,
+          business_id: connection.businessId,
+          role: message.item.role,
+          content: message.item.content[0]?.text || message.item.content[0]?.transcript || '',
+          timestamp: new Date().toISOString(),
+        });
         logger.debug('Transcription saved');
       } catch (error) {
         logger.error('Error saving transcription:', error);
@@ -487,7 +500,7 @@ async function convertMulawToPCM16(mulawBuffer: Buffer): Promise<Buffer<ArrayBuf
       .inputFormat('mulaw')
       .inputOptions(['-ar 8000'])
       .outputFormat('s16le')
-      .outputOptions(['-ar 16000'])
+      .outputOptions(['-ar 24000']) // OpenAI Realtime API expects 24kHz PCM16
       .on('error', reject)
       .on('end', () => {
         resolve(Buffer.concat(chunks));
@@ -510,7 +523,7 @@ async function convertAlawToPCM16(alawBuffer: Buffer): Promise<Buffer<ArrayBuffe
       .inputFormat('alaw')
       .inputOptions(['-ar 8000'])
       .outputFormat('s16le')
-      .outputOptions(['-ar 16000'])
+      .outputOptions(['-ar 24000']) // OpenAI Realtime API expects 24kHz PCM16
       .on('error', reject)
       .on('end', () => {
         resolve(Buffer.concat(chunks));

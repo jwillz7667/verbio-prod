@@ -1,8 +1,8 @@
 import { tool } from '@openai/agents';
 import { z } from 'zod';
-import Logger from '../../utils/logger';
+// import Logger from '../../utils/logger';
 
-const logger = Logger;
+// const logger = Logger;
 
 export class CommunicationTool {
   static sendSMS = tool({
@@ -12,10 +12,9 @@ export class CommunicationTool {
       phone: z.string(),
       message: z.string(),
     }),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Would integrate with Twilio SMS
-      return { success: true, message: 'SMS sent' };
-    },
+      ({ success: true, message: 'SMS sent' }),
   });
 
   static sendEmail = tool({
@@ -26,10 +25,9 @@ export class CommunicationTool {
       subject: z.string(),
       body: z.string(),
     }),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Would integrate with email service
-      return { success: true, message: 'Email sent' };
-    },
+      ({ success: true, message: 'Email sent' }),
   });
 
   static scheduleFollowUp = tool({
@@ -40,9 +38,8 @@ export class CommunicationTool {
       scheduledTime: z.string(),
       message: z.string(),
     }),
-    execute: async (input, context: any) => {
+    execute: async (_input, _context: any) =>
       // Implementation would go here
-      return { success: true, message: 'Follow-up scheduled' };
-    },
+      ({ success: true, message: 'Follow-up scheduled' }),
   });
 }

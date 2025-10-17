@@ -1,5 +1,3 @@
-import { tool } from '@openai/agents';
-import { z } from 'zod';
 import { OrderManagementTool } from './orderManagement';
 import { PaymentProcessingTool } from './paymentProcessing';
 import { BusinessInfoTool } from './businessInfo';
@@ -80,7 +78,7 @@ export const TOOL_CATEGORIES = {
 // Helper function to get tools by category
 export function getToolsByCategory(category: keyof typeof TOOL_CATEGORIES): any[] {
   const toolNames = TOOL_CATEGORIES[category];
-  return toolNames.map(name => AGENT_TOOLS[name as keyof typeof AGENT_TOOLS]).filter(Boolean);
+  return toolNames.map((name) => AGENT_TOOLS[name as keyof typeof AGENT_TOOLS]).filter(Boolean);
 }
 
 // Helper function to get tools for a specific agent type
@@ -102,11 +100,7 @@ export function getToolsForAgentType(agentType: 'service' | 'order' | 'payment' 
         AGENT_TOOLS.checkInventory,
       ];
     case 'payment':
-      return [
-        ...getToolsByCategory('payment'),
-        AGENT_TOOLS.getOrderStatus,
-        AGENT_TOOLS.getCustomerProfile,
-      ];
+      return [...getToolsByCategory('payment'), AGENT_TOOLS.getOrderStatus, AGENT_TOOLS.getCustomerProfile];
     case 'scheduling':
       return [
         ...getToolsByCategory('scheduling'),
